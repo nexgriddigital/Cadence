@@ -1,0 +1,316 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: default deny everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isNumberInRange(val, minVal, maxVal) {
+      return (val is int || val is float) && val >= minVal && val <= maxVal;
+    }
+
+    function isValidPaymentMethod(method) {
+      return method is string && method.size() <= 32 &&
+        method in ['ACH Direct Deposit', 'Wire Transfer', 'Wise', 'PayPal', 'Check'];
+    }
+
+    function isValidPayoutStatus(status) {
+      return status is string && status.size() <= 16 &&
+        status in ['Paid', 'Scheduled', 'Pending', 'On Hold'];
+    }
+
+    function isValidCommissionModel(model) {
+      return model is string && model.size() <= 16 &&
+        model in ['percentage', 'flat'];
+    }
+
+    function isValidIsoDate(val) {
+      return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    // --- Entity Validation Blueprints (create + update) ---
+    function isValidUserWorkspace(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'seededDemo', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'seededDemo', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.seededDemo is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCommissionRules(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'defaultCommissionRatePct', 'highPayBonusThreshold',
+          'highPayBonusAmount', 'tierAcceleratorThreshold', 'tierAcceleratorRatePct',
+          'retentionMilestoneBonusAmount', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'defaultCommissionRatePct', 'highPayBonusThreshold',
+          'highPayBonusAmount', 'tierAcceleratorThreshold', 'tierAcceleratorRatePct',
+          'retentionMilestoneBonusAmount', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        isNumberInRange(data.defaultCommissionRatePct, 0, 100) &&
+        isNumberInRange(data.highPayBonusThreshold, 0, 10000000) &&
+        isNumberInRange(data.highPayBonusAmount, 0, 1000000) &&
+        isNumberInRange(data.tierAcceleratorThreshold, 0, 100000000) &&
+        isNumberInRange(data.tierAcceleratorRatePct, 0, 100) &&
+        isNumberInRange(data.retentionMilestoneBonusAmount, 0, 1000000) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRecruit(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'role', 'company', 'email', 'startDate',
+          'commissionModel', 'customCommissionValue', 'preferredPaymentMethod',
+          'paymentAccountDetail', 'active', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'name', 'role', 'company', 'email', 'startDate',
+          'commissionModel', 'customCommissionValue', 'preferredPaymentMethod',
+          'paymentAccountDetail', 'active', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 120 &&
+        data.company is string && data.company.size() >= 1 && data.company.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        isValidIsoDate(data.startDate) &&
+        isValidCommissionModel(data.commissionModel) &&
+        (data.customCommissionValue == null || isNumberInRange(data.customCommissionValue, 0, 1000000)) &&
+        isValidPaymentMethod(data.preferredPaymentMethod) &&
+        data.paymentAccountDetail is string && data.paymentAccountDetail.size() >= 1 && data.paymentAccountDetail.size() <= 160 &&
+        data.active is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBonusList(bonuses) {
+      return bonuses is list && bonuses.size() <= 10 &&
+        (bonuses.size() == 0 || (
+          bonuses[0] is map &&
+          bonuses[0].keys().hasAll(['id', 'label', 'amount']) &&
+          bonuses[0].keys().hasOnly(['id', 'label', 'amount']) &&
+          bonuses[0].id is string && bonuses[0].id.size() >= 1 && bonuses[0].id.size() <= 64 &&
+          bonuses[0].label is string && bonuses[0].label.size() >= 1 && bonuses[0].label.size() <= 160 &&
+          isNumberInRange(bonuses[0].amount, 0, 1000000)
+        ));
+    }
+
+    function isValidPayout(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'recruitId', 'payDate', 'payPeriodLabel', 'grossEmployeePay',
+          'commissionModel', 'commissionRateOrFlat', 'baseCommissionAmount',
+          'bonuses', 'totalBonusAmount', 'totalRecruiterEarnings',
+          'paymentMethod', 'paymentAccountDetail', 'referenceCode',
+          'status', 'isRetentionMilestone', 'notes', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'recruitId', 'payDate', 'payPeriodLabel', 'grossEmployeePay',
+          'commissionModel', 'commissionRateOrFlat', 'baseCommissionAmount',
+          'bonuses', 'totalBonusAmount', 'totalRecruiterEarnings',
+          'paymentMethod', 'paymentAccountDetail', 'referenceCode',
+          'status', 'isRetentionMilestone', 'notes', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        isValidId(data.recruitId) &&
+        isValidIsoDate(data.payDate) &&
+        data.payPeriodLabel is string && data.payPeriodLabel.size() >= 1 && data.payPeriodLabel.size() <= 80 &&
+        isNumberInRange(data.grossEmployeePay, 0, 10000000) &&
+        isValidCommissionModel(data.commissionModel) &&
+        isNumberInRange(data.commissionRateOrFlat, 0, 1000000) &&
+        isNumberInRange(data.baseCommissionAmount, 0, 10000000) &&
+        isValidBonusList(data.bonuses) &&
+        isNumberInRange(data.totalBonusAmount, 0, 10000000) &&
+        isNumberInRange(data.totalRecruiterEarnings, 0, 20000000) &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        data.paymentAccountDetail is string && data.paymentAccountDetail.size() >= 1 && data.paymentAccountDetail.size() <= 160 &&
+        data.referenceCode is string && data.referenceCode.size() >= 3 && data.referenceCode.size() <= 32 &&
+        data.referenceCode.matches('^[A-Z0-9\\-]+$') &&
+        isValidPayoutStatus(data.status) &&
+        data.isRetentionMilestone is bool &&
+        data.notes is string && data.notes.size() <= 500 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPerformanceTarget(data, userId, targetId) {
+      return data.keys().hasAll([
+          'ownerId', 'recruitId', 'monthlyPayGoal', 'multiplierFactor',
+          'active', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'recruitId', 'monthlyPayGoal', 'multiplierFactor',
+          'active', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        isValidId(data.recruitId) &&
+        data.recruitId == targetId &&
+        isNumberInRange(data.monthlyPayGoal, 0, 10000000) &&
+        isNumberInRange(data.multiplierFactor, 1, 5) &&
+        data.active is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Workspace & Subcollection Match Blocks ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isValidId(userId) && isOwner(userId) &&
+        isValidUserWorkspace(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isOwner(userId) &&
+        isValidUserWorkspace(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'seededDemo', 'updatedAt']);
+      allow delete: if false;
+
+      match /settings/{settingId} {
+        allow get: if isValidId(userId) && isValidId(settingId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(settingId) && settingId == 'commissionRules' &&
+          isOwner(userId) &&
+          isValidCommissionRules(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId) && isValidId(settingId) && settingId == 'commissionRules' &&
+          isOwner(userId) &&
+          isValidCommissionRules(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'defaultCommissionRatePct', 'highPayBonusThreshold', 'highPayBonusAmount',
+            'tierAcceleratorThreshold', 'tierAcceleratorRatePct', 'retentionMilestoneBonusAmount',
+            'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if false;
+      }
+
+      match /recruits/{recruitId} {
+        allow get: if isValidId(userId) && isValidId(recruitId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(recruitId) &&
+          isOwner(userId) &&
+          isValidRecruit(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId) && isValidId(recruitId) &&
+          isOwner(userId) &&
+          isValidRecruit(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'role', 'company', 'email', 'startDate',
+            'commissionModel', 'customCommissionValue', 'preferredPaymentMethod',
+            'paymentAccountDetail', 'active', 'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(recruitId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      match /payouts/{payoutId} {
+        allow get: if isValidId(userId) && isValidId(payoutId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(payoutId) &&
+          isOwner(userId) &&
+          isValidPayout(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)) &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)/recruits/$(incoming().recruitId));
+        allow update: if isValidId(userId) && isValidId(payoutId) &&
+          isOwner(userId) &&
+          isValidPayout(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().recruitId == existing().recruitId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])
+          ) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(payoutId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      match /performanceTargets/{targetId} {
+        allow get: if isValidId(userId) && isValidId(targetId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(targetId) &&
+          isOwner(userId) &&
+          isValidPerformanceTarget(incoming(), userId, targetId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)) &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)/recruits/$(targetId));
+        allow update: if isValidId(userId) && isValidId(targetId) &&
+          isOwner(userId) &&
+          isValidPerformanceTarget(incoming(), userId, targetId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().recruitId == existing().recruitId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'monthlyPayGoal', 'multiplierFactor', 'active', 'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(targetId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+    }
+  }
+}

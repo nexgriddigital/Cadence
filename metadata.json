@@ -1,0 +1,6 @@
+{
+  "name": "Cadence — Recruiting Commission & Payout Ledger",
+  "description": "Track recruited employee payouts, automatic commission calculations, milestone bonuses, and payment methods in one ledger.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

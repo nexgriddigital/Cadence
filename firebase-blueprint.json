@@ -1,0 +1,343 @@
+{
+  "entities": {
+    "UserWorkspace": {
+      "title": "UserWorkspace",
+      "description": "Authenticated user's private recruiting payroll workspace root document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the workspace owner."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Display name of the workspace owner."
+        },
+        "seededDemo": {
+          "type": "boolean",
+          "description": "Whether initial sample records have been seeded."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when workspace was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when workspace was last updated."
+        }
+      },
+      "required": ["uid", "displayName", "seededDemo", "createdAt", "updatedAt"]
+    },
+    "CommissionRules": {
+      "title": "CommissionRules",
+      "description": "Automatic base commission rate and milestone bonus rules for a workspace.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "defaultCommissionRatePct": {
+          "type": "number"
+        },
+        "highPayBonusThreshold": {
+          "type": "number"
+        },
+        "highPayBonusAmount": {
+          "type": "number"
+        },
+        "tierAcceleratorThreshold": {
+          "type": "number"
+        },
+        "tierAcceleratorRatePct": {
+          "type": "number"
+        },
+        "retentionMilestoneBonusAmount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "defaultCommissionRatePct",
+        "highPayBonusThreshold",
+        "highPayBonusAmount",
+        "tierAcceleratorThreshold",
+        "tierAcceleratorRatePct",
+        "retentionMilestoneBonusAmount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Recruit": {
+      "title": "Recruit",
+      "description": "A recruited employee placed at a company with commission terms and payment method.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "company": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "startDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "commissionModel": {
+          "type": "string",
+          "enum": ["percentage", "flat"]
+        },
+        "customCommissionValue": {
+          "type": "number"
+        },
+        "preferredPaymentMethod": {
+          "type": "string",
+          "enum": ["ACH Direct Deposit", "Wire Transfer", "Wise", "PayPal", "Check"]
+        },
+        "paymentAccountDetail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "role",
+        "company",
+        "email",
+        "startDate",
+        "commissionModel",
+        "preferredPaymentMethod",
+        "paymentAccountDetail",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PayoutRecord": {
+      "title": "PayoutRecord",
+      "description": "Recorded employee payout with auto-calculated commissions, bonuses, and payment method.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recruitId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "payDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "payPeriodLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "grossEmployeePay": {
+          "type": "number"
+        },
+        "commissionModel": {
+          "type": "string",
+          "enum": ["percentage", "flat"]
+        },
+        "commissionRateOrFlat": {
+          "type": "number"
+        },
+        "baseCommissionAmount": {
+          "type": "number"
+        },
+        "bonuses": {
+          "type": "array"
+        },
+        "totalBonusAmount": {
+          "type": "number"
+        },
+        "totalRecruiterEarnings": {
+          "type": "number"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["ACH Direct Deposit", "Wire Transfer", "Wise", "PayPal", "Check"]
+        },
+        "paymentAccountDetail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "referenceCode": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Paid", "Scheduled", "Pending", "On Hold"]
+        },
+        "isRetentionMilestone": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "recruitId",
+        "payDate",
+        "payPeriodLabel",
+        "grossEmployeePay",
+        "commissionModel",
+        "commissionRateOrFlat",
+        "baseCommissionAmount",
+        "bonuses",
+        "totalBonusAmount",
+        "totalRecruiterEarnings",
+        "paymentMethod",
+        "paymentAccountDetail",
+        "referenceCode",
+        "status",
+        "isRetentionMilestone",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PerformanceTarget": {
+      "title": "PerformanceTarget",
+      "description": "Monthly recruitment pay goal and commission multiplier configuration per employee.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recruitId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "monthlyPayGoal": {
+          "type": "number"
+        },
+        "multiplierFactor": {
+          "type": "number"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "recruitId",
+        "monthlyPayGoal",
+        "multiplierFactor",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserWorkspace" },
+      "description": "Owner-isolated workspace root document."
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/CommissionRules" },
+      "description": "Automatic commission and bonus configuration per workspace."
+    },
+    "/users/{userId}/recruits/{recruitId}": {
+      "schema": { "$ref": "#/entities/Recruit" },
+      "description": "Recruited employees and their payment method details."
+    },
+    "/users/{userId}/payouts/{payoutId}": {
+      "schema": { "$ref": "#/entities/PayoutRecord" },
+      "description": "Recorded employee payout ledger with calculated commissions and bonuses."
+    },
+    "/users/{userId}/performanceTargets/{targetId}": {
+      "schema": { "$ref": "#/entities/PerformanceTarget" },
+      "description": "Monthly recruitment goals and commission multipliers per recruited employee."
+    }
+  }
+}
