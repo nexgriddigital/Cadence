@@ -34,10 +34,21 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setAuthReady(true);
-    });
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (nextUser) => {
+        setUser(nextUser);
+        setAuthReady(true);
+      },
+      (error) => {
+        setAuthError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to initialize authentication.'
+        );
+        setAuthReady(true);
+      }
+    );
     return () => unsubscribe();
   }, []);
 
@@ -55,6 +66,12 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         setAuthError('Sign-in popup was closed before completing authentication.');
       } else if (code === 'auth/popup-blocked') {
         setAuthError('Browser blocked the sign-in popup. Allow popups for this site and try again.');
+      } else if (code === 'auth/unauthorized-domain') {
+        const host =
+          typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setAuthError(
+          `Domain "${host}" is not authorized in Firebase Authentication. Add "${host}" under Firebase Console → Authentication → Settings → Authorized domains.`
+        );
       } else {
         setAuthError(
           error instanceof Error

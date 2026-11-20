@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useMemo, useState } from 'react';
 import type { DashboardTab, PayoutRecord, Recruit } from './types/payroll';
 import { FirebaseProvider, useFirebaseAuth } from './contexts/FirebaseContext';
 import { usePayrollStore } from './hooks/usePayrollStore';
@@ -262,10 +262,63 @@ function AppGate() {
   return <AuthenticatedWorkspace />;
 }
 
+interface ErrorBoundaryState {
+  hasError: boolean;
+  message: string;
+}
+
+class WorkspaceErrorBoundary extends Component<
+  { children: ReactNode },
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { hasError: false, message: '' };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      message: error?.message || 'An unexpected rendering error occurred.',
+    };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Cadence workspace error:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-4">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="space-y-1">
+              <h1 className="font-display text-lg font-semibold text-slate-900">
+                Unable to render workspace
+              </h1>
+              <p className="text-sm text-slate-600">
+                {this.state.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 text-xs font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors"
+            >
+              Reload Workspace
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <FirebaseProvider>
-      <AppGate />
-    </FirebaseProvider>
+    <WorkspaceErrorBoundary>
+      <FirebaseProvider>
+        <AppGate />
+      </FirebaseProvider>
+    </WorkspaceErrorBoundary>
   );
 }

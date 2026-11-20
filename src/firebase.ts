@@ -1,44 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import {
-  GoogleAuthProvider,
-  browserLocalPersistence,
-  getAuth,
-  setPersistence,
-} from 'firebase/auth';
-import {
-  type Firestore,
-  doc,
-  getDocFromServer,
-  getFirestore,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from 'firebase/firestore';
+import { GoogleAuthProvider, getAuth } from 'firebase/auth';
+import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-
-function createFirestoreClient(): Firestore {
-  try {
-    return initializeFirestore(
-      app,
-      {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
-      },
-      firebaseConfig.firestoreDatabaseId
-    );
-  } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
-  }
-}
-
-export const db = createFirestoreClient();
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
-void setPersistence(auth, browserLocalPersistence).catch(() => {
-  // Fallback to default auth persistence if storage is restricted
-});
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
