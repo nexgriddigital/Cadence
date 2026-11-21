@@ -4,10 +4,46 @@ import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const configWithOptionalDb = firebaseConfig as typeof firebaseConfig & {
+  firestoreDatabaseId?: string;
+};
+export const db = configWithOptionalDb.firestoreDatabaseId
+  ? getFirestore(app, configWithOptionalDb.firestoreDatabaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
+export const GOOGLE_FORMS_SCOPES = [
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.responses.readonly',
+] as const;
+
 export const googleProvider = new GoogleAuthProvider();
+for (const scope of GOOGLE_FORMS_SCOPES) {
+  googleProvider.addScope(scope);
+}
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export const googleFormsConnectProvider = new GoogleAuthProvider();
+for (const scope of GOOGLE_FORMS_SCOPES) {
+  googleFormsConnectProvider.addScope(scope);
+}
+googleFormsConnectProvider.setCustomParameters({
+  prompt: 'consent select_account',
+});
+
+// Strictly in-memory OAuth access token cache (never persisted to localStorage/sessionStorage)
+let inMemoryFormsAccessToken: string | null = null;
+
+export function getFormsAccessToken(): string | null {
+  return inMemoryFormsAccessToken;
+}
+
+export function setFormsAccessToken(token: string | null): void {
+  inMemoryFormsAccessToken = token;
+}
+
+export function clearFormsAccessToken(): void {
+  inMemoryFormsAccessToken = null;
+}
 
 export const DESIGNATED_OWNER_UID = '82SIYo8O2hdtNqBAH8stAkPBZYq2';
 

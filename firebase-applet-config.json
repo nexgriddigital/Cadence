@@ -1,12 +1,11 @@
 {
-  "projectId": "jarvis-neo-499812",
-  "appId": "1:96641906805:web:f6c9f36a5a2dcaef8a603c",
-  "apiKey": "AIzaSyCDUdkZsDmO_GgpxVy83V_9NZDh4rloTa0",
-  "authDomain": "jarvis-neo-499812.firebaseapp.com",
-  "firestoreDatabaseId": "proj-1001",
-  "storageBucket": "jarvis-neo-499812.firebasestorage.app",
-  "messagingSenderId": "96641906805",
+  "projectId": "gen-lang-client-0267695795",
+  "appId": "1:409437519767:web:b849db079de254b9170ed2",
+  "apiKey": "AIzaSyALG7mIrPeEnnPZzyxZz-bzm52AVCJRNtI",
+  "authDomain": "gen-lang-client-0267695795.firebaseapp.com",
+  "storageBucket": "gen-lang-client-0267695795.firebasestorage.app",
+  "messagingSenderId": "409437519767",
   "measurementId": "",
-  "oAuthClientId": "96641906805-72ncd90ot625sr7d96qgpkf3ea0876g6.apps.googleusercontent.com",
+  "oAuthClientId": "409437519767-2eun8kkgubhrmqmqdj0b0a0kn493nb2t.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

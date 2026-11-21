@@ -58,8 +58,27 @@ service cloud.firestore {
         model in ['percentage', 'flat'];
     }
 
+    function isValidApplicantStage(stage) {
+      return stage is string && stage.size() <= 16 &&
+        stage in ['New', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+    }
+
     function isValidIsoDate(val) {
       return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isValidInviteCode(code) {
+      return code is string && code.size() == 13 && code.matches('^CAD-[A-Z0-9]{4}-[A-Z0-9]{4}$');
+    }
+
+    function isValidInviteStatus(status) {
+      return status is string && status.size() <= 16 &&
+        status in ['Active', 'Used', 'Revoked'];
+    }
+
+    function isValidFlagList(flags) {
+      return flags is list && flags.size() <= 10 &&
+        (flags.size() == 0 || (flags[0] is string && flags[0].size() <= 300));
     }
 
     // --- Entity Validation Blueprints (create + update) ---
@@ -199,6 +218,161 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidApplicant(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'email', 'phone', 'targetRole', 'targetCompany',
+          'source', 'appliedDate', 'expectedSalary', 'stage', 'notes',
+          'convertedRecruitId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'name', 'email', 'phone', 'targetRole', 'targetCompany',
+          'source', 'appliedDate', 'expectedSalary', 'stage', 'notes',
+          'convertedRecruitId', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.phone is string && data.phone.size() <= 40 &&
+        data.targetRole is string && data.targetRole.size() >= 1 && data.targetRole.size() <= 120 &&
+        data.targetCompany is string && data.targetCompany.size() <= 120 &&
+        data.source is string && data.source.size() <= 80 &&
+        isValidIsoDate(data.appliedDate) &&
+        isNumberInRange(data.expectedSalary, 0, 10000000) &&
+        isValidApplicantStage(data.stage) &&
+        data.notes is string && data.notes.size() <= 500 &&
+        (data.convertedRecruitId == null || isValidId(data.convertedRecruitId)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidExamForm(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'googleFormId', 'title', 'responderUri', 'editUrl',
+          'qFullName', 'qEmail', 'qTargetRole', 'qDuolingoScore', 'qDuolingoProof',
+          'qScenario', 'qTrickConstraint', 'qTrickLogic', 'qTrickCanary',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'googleFormId', 'title', 'responderUri', 'editUrl',
+          'qFullName', 'qEmail', 'qTargetRole', 'qDuolingoScore', 'qDuolingoProof',
+          'qScenario', 'qTrickConstraint', 'qTrickLogic', 'qTrickCanary',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        data.googleFormId is string && data.googleFormId.size() >= 1 && data.googleFormId.size() <= 160 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.responderUri is string && data.responderUri.size() >= 1 && data.responderUri.size() <= 500 &&
+        data.editUrl is string && data.editUrl.size() >= 1 && data.editUrl.size() <= 500 &&
+        data.qFullName is string && data.qFullName.size() <= 120 &&
+        data.qEmail is string && data.qEmail.size() <= 120 &&
+        data.qTargetRole is string && data.qTargetRole.size() <= 120 &&
+        data.qDuolingoScore is string && data.qDuolingoScore.size() <= 120 &&
+        data.qDuolingoProof is string && data.qDuolingoProof.size() <= 120 &&
+        data.qScenario is string && data.qScenario.size() <= 120 &&
+        data.qTrickConstraint is string && data.qTrickConstraint.size() <= 120 &&
+        data.qTrickLogic is string && data.qTrickLogic.size() <= 120 &&
+        data.qTrickCanary is string && data.qTrickCanary.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidExamSubmission(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'googleFormId', 'responseId', 'applicantName', 'applicantEmail',
+          'targetRole', 'duolingoScore', 'duolingoProof', 'duolingoPassed',
+          'canaryTriggered', 'trickQuestionsPassed', 'aiLikelihoodPct', 'aiSuspected',
+          'qualityScore', 'passed', 'flags', 'summary', 'inviteCode', 'submittedAt',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'googleFormId', 'responseId', 'applicantName', 'applicantEmail',
+          'targetRole', 'duolingoScore', 'duolingoProof', 'duolingoPassed',
+          'canaryTriggered', 'trickQuestionsPassed', 'aiLikelihoodPct', 'aiSuspected',
+          'qualityScore', 'passed', 'flags', 'summary', 'inviteCode', 'submittedAt',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        data.googleFormId is string && data.googleFormId.size() >= 1 && data.googleFormId.size() <= 160 &&
+        data.responseId is string && data.responseId.size() >= 1 && data.responseId.size() <= 160 &&
+        data.applicantName is string && data.applicantName.size() >= 1 && data.applicantName.size() <= 120 &&
+        data.applicantEmail is string && data.applicantEmail.size() >= 3 && data.applicantEmail.size() <= 160 &&
+        data.targetRole is string && data.targetRole.size() <= 120 &&
+        isNumberInRange(data.duolingoScore, 0, 160) &&
+        data.duolingoProof is string && data.duolingoProof.size() <= 300 &&
+        data.duolingoPassed is bool &&
+        data.canaryTriggered is bool &&
+        data.trickQuestionsPassed is bool &&
+        isNumberInRange(data.aiLikelihoodPct, 0, 100) &&
+        data.aiSuspected is bool &&
+        isNumberInRange(data.qualityScore, 0, 100) &&
+        data.passed is bool &&
+        isValidFlagList(data.flags) &&
+        data.summary is string && data.summary.size() <= 500 &&
+        (data.inviteCode == null || isValidInviteCode(data.inviteCode)) &&
+        data.submittedAt is string && data.submittedAt.size() <= 64 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidApplicantInvite(data, code) {
+      return data.keys().hasAll([
+          'code', 'recruiterUid', 'applicantName', 'applicantEmail', 'targetRole',
+          'duolingoScore', 'examScore', 'aiLikelihoodPct', 'status', 'usedByUid',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'code', 'recruiterUid', 'applicantName', 'applicantEmail', 'targetRole',
+          'duolingoScore', 'examScore', 'aiLikelihoodPct', 'status', 'usedByUid',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidInviteCode(data.code) &&
+        data.code == code &&
+        isValidId(data.recruiterUid) &&
+        data.applicantName is string && data.applicantName.size() >= 1 && data.applicantName.size() <= 120 &&
+        data.applicantEmail is string && data.applicantEmail.size() >= 3 && data.applicantEmail.size() <= 160 &&
+        data.targetRole is string && data.targetRole.size() <= 120 &&
+        isNumberInRange(data.duolingoScore, 100, 160) &&
+        isNumberInRange(data.examScore, 0, 100) &&
+        isNumberInRange(data.aiLikelihoodPct, 0, 100) &&
+        isValidInviteStatus(data.status) &&
+        (data.usedByUid == null || isValidId(data.usedByUid)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidApplicantProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'recruiterUid', 'inviteCode', 'name', 'email', 'targetRole',
+          'duolingoScore', 'examScore', 'aiLikelihoodPct', 'status',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'recruiterUid', 'inviteCode', 'name', 'email', 'targetRole',
+          'duolingoScore', 'examScore', 'aiLikelihoodPct', 'status',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        isValidId(data.recruiterUid) &&
+        isValidInviteCode(data.inviteCode) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.targetRole is string && data.targetRole.size() <= 120 &&
+        isNumberInRange(data.duolingoScore, 100, 160) &&
+        isNumberInRange(data.examScore, 0, 100) &&
+        isNumberInRange(data.aiLikelihoodPct, 0, 100) &&
+        data.status == 'Approved' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     // --- Workspace & Subcollection Match Blocks ---
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
@@ -318,6 +492,161 @@ service cloud.firestore {
           isOwner(userId) &&
           exists(/databases/$(database)/documents/users/$(userId));
       }
+
+      match /applicants/{applicantId} {
+        allow get: if isValidId(userId) && isValidId(applicantId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(applicantId) &&
+          isOwner(userId) &&
+          isValidApplicant(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId) && isValidId(applicantId) &&
+          isOwner(userId) &&
+          isValidApplicant(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'email', 'phone', 'targetRole', 'targetCompany',
+            'source', 'appliedDate', 'expectedSalary', 'stage', 'notes',
+            'convertedRecruitId', 'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(applicantId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      match /examForms/{formId} {
+        allow get: if isValidId(userId) && isValidId(formId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(formId) &&
+          isOwner(userId) &&
+          isValidExamForm(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId) && isValidId(formId) &&
+          isOwner(userId) &&
+          isValidExamForm(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().googleFormId == existing().googleFormId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'responderUri', 'editUrl', 'qFullName', 'qEmail',
+            'qTargetRole', 'qDuolingoScore', 'qDuolingoProof', 'qScenario',
+            'qTrickConstraint', 'qTrickLogic', 'qTrickCanary', 'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(formId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      match /examSubmissions/{submissionId} {
+        allow get: if isValidId(userId) && isValidId(submissionId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(submissionId) &&
+          isOwner(userId) &&
+          isValidExamSubmission(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId) && isValidId(submissionId) &&
+          isOwner(userId) &&
+          isValidExamSubmission(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().googleFormId == existing().googleFormId &&
+          incoming().responseId == existing().responseId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['inviteCode', 'updatedAt']) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(submissionId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+    }
+
+    match /applicantInvites/{code} {
+      allow list: if isVerifiedUser() && existing().recruiterUid == request.auth.uid;
+      allow get: if isValidInviteCode(code) && isSignedIn() && (
+        isOwner(existing().recruiterUid) ||
+        existing().usedByUid == request.auth.uid ||
+        (
+          existing().status == 'Active' &&
+          request.auth.token.email != null &&
+          existing().applicantEmail == request.auth.token.email.lower()
+        )
+      );
+      allow create: if isValidInviteCode(code) &&
+        isOwner(incoming().recruiterUid) &&
+        isValidApplicantInvite(incoming(), code) &&
+        incoming().status == 'Active' &&
+        incoming().usedByUid == null &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/users/$(incoming().recruiterUid));
+      allow update: if isValidInviteCode(code) &&
+        isValidApplicantInvite(incoming(), code) &&
+        incoming().code == existing().code &&
+        incoming().recruiterUid == existing().recruiterUid &&
+        incoming().applicantName == existing().applicantName &&
+        incoming().applicantEmail == existing().applicantEmail &&
+        incoming().targetRole == existing().targetRole &&
+        incoming().duolingoScore == existing().duolingoScore &&
+        incoming().examScore == existing().examScore &&
+        incoming().aiLikelihoodPct == existing().aiLikelihoodPct &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            isOwner(existing().recruiterUid) &&
+            existing().status != 'Used' &&
+            incoming().status in ['Active', 'Revoked'] &&
+            incoming().usedByUid == existing().usedByUid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          (
+            isSignedIn() &&
+            existing().status == 'Active' &&
+            existing().usedByUid == null &&
+            request.auth.token.email != null &&
+            existing().applicantEmail == request.auth.token.email.lower() &&
+            incoming().status == 'Used' &&
+            incoming().usedByUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'usedByUid', 'updatedAt']) &&
+            existsAfter(/databases/$(database)/documents/applicantProfiles/$(request.auth.uid))
+          )
+        );
+      allow delete: if isValidInviteCode(code) && isOwner(existing().recruiterUid);
+    }
+
+    match /applicantProfiles/{userId} {
+      allow list: if isVerifiedUser() && existing().recruiterUid == request.auth.uid;
+      allow get: if isValidId(userId) && isSignedIn() && (
+        request.auth.uid == userId ||
+        isOwner(existing().recruiterUid)
+      );
+      allow create: if isValidId(userId) &&
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        isValidApplicantProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        request.auth.token.email != null &&
+        incoming().email == request.auth.token.email.lower() &&
+        get(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.status == 'Active' &&
+        get(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.applicantEmail == request.auth.token.email.lower() &&
+        incoming().recruiterUid == get(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.recruiterUid &&
+        incoming().duolingoScore == get(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.duolingoScore &&
+        getAfter(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.status == 'Used' &&
+        getAfter(/databases/$(database)/documents/applicantInvites/$(incoming().inviteCode)).data.usedByUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isValidId(userId) && isOwner(existing().recruiterUid);
     }
   }
 }

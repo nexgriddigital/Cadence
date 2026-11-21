@@ -1,5 +1,7 @@
 import {
+  ClipboardList,
   CreditCard,
+  FileSpreadsheet,
   LayoutDashboard,
   LogOut,
   Receipt,
@@ -13,6 +15,8 @@ interface SidebarProps {
   activeTab: DashboardTab;
   onSelectTab: (tab: DashboardTab) => void;
   pendingCount: number;
+  applicantCount: number;
+  examSubmissionCount: number;
   recruitCount: number;
   mobileOpen: boolean;
   onCloseMobile: () => void;
@@ -28,6 +32,8 @@ const NAV_ITEMS: Array<{
 }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'ledger', label: 'Payout Ledger', icon: Receipt },
+  { id: 'applicants', label: 'Applicants', icon: ClipboardList },
+  { id: 'forms', label: 'Google Forms', icon: FileSpreadsheet },
   { id: 'recruits', label: 'Recruits', icon: Users },
   { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
   { id: 'rules', label: 'Commission Rules', icon: SlidersHorizontal },
@@ -37,6 +43,8 @@ export function Sidebar({
   activeTab,
   onSelectTab,
   pendingCount,
+  applicantCount,
+  examSubmissionCount,
   recruitCount,
   mobileOpen,
   onCloseMobile,
@@ -67,9 +75,13 @@ export function Sidebar({
           const countText =
             item.id === 'ledger' && pendingCount > 0
               ? `${pendingCount}`
-              : item.id === 'recruits'
-                ? `${recruitCount}`
-                : null;
+              : item.id === 'applicants'
+                ? `${applicantCount}`
+                : item.id === 'forms' && examSubmissionCount > 0
+                  ? `${examSubmissionCount}`
+                  : item.id === 'recruits'
+                    ? `${recruitCount}`
+                    : null;
 
           return (
             <button

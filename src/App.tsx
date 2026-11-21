@@ -1,5 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode, useMemo, useState } from 'react';
-import type { DashboardTab, PayoutRecord, Recruit } from './types/payroll';
+import type {
+  Applicant,
+  DashboardTab,
+  PayoutRecord,
+  Recruit,
+} from './types/payroll';
 import { FirebaseProvider, useFirebaseAuth } from './contexts/FirebaseContext';
 import { isWorkspaceAccessAllowed } from './firebase';
 import { usePayrollStore } from './hooks/usePayrollStore';
@@ -8,11 +13,15 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { OverviewView } from './components/OverviewView';
 import { LedgerView } from './components/LedgerView';
+import { ApplicantsView } from './components/ApplicantsView';
+import { GoogleFormsView } from './components/GoogleFormsView';
+import { ApplicantPortalView } from './components/ApplicantPortalView';
 import { RecruitsView } from './components/RecruitsView';
 import { PaymentMethodsView } from './components/PaymentMethodsView';
 import { RulesView } from './components/RulesView';
 import { RecordPayoutModal } from './components/RecordPayoutModal';
 import { RecruitModal } from './components/RecruitModal';
+import { ApplicantModal } from './components/ApplicantModal';
 import { PayoutDetailDrawer } from './components/PayoutDetailDrawer';
 
 function WorkspaceSkeleton() {
@@ -54,9 +63,13 @@ function AuthenticatedWorkspace() {
   const { user, signOutUser } = useFirebaseAuth();
   const {
     recruits,
+    applicants,
     payouts,
     rules,
     performanceTargets,
+    examForms,
+    examSubmissions,
+    applicantInvites,
     loading,
     syncError,
     recruitsMap,
@@ -67,6 +80,16 @@ function AuthenticatedWorkspace() {
     deletePayout,
     addRecruit,
     updateRecruit,
+    addApplicant,
+    updateApplicant,
+    updateApplicantStage,
+    deleteApplicant,
+    saveExamForm,
+    deleteExamForm,
+    saveExamSubmission,
+    deleteExamSubmission,
+    issueApplicantInvite,
+    revokeApplicantInvite,
     updateRules,
     savePerformanceTarget,
   } = usePayrollStore();
@@ -81,6 +104,13 @@ function AuthenticatedWorkspace() {
   );
   const [recruitModalOpen, setRecruitModalOpen] = useState(false);
   const [editingRecruit, setEditingRecruit] = useState<Recruit | null>(null);
+  const [promotingApplicant, setPromotingApplicant] = useState<Applicant | null>(
+    null
+  );
+  const [applicantModalOpen, setApplicantModalOpen] = useState(false);
+  const [editingApplicant, setEditingApplicant] = useState<Applicant | null>(
+    null
+  );
   const [inspectedPayoutId, setInspectedPayoutId] = useState<string | null>(null);
 
   const inspectedPayout: PayoutRecord | null = useMemo(() => {
@@ -95,11 +125,29 @@ function AuthenticatedWorkspace() {
 
   const openAddRecruitModal = () => {
     setEditingRecruit(null);
+    setPromotingApplicant(null);
     setRecruitModalOpen(true);
   };
 
   const openEditRecruitModal = (recruit: Recruit) => {
     setEditingRecruit(recruit);
+    setPromotingApplicant(null);
+    setRecruitModalOpen(true);
+  };
+
+  const openAddApplicantModal = () => {
+    setEditingApplicant(null);
+    setApplicantModalOpen(true);
+  };
+
+  const openEditApplicantModal = (applicant: Applicant) => {
+    setEditingApplicant(applicant);
+    setApplicantModalOpen(true);
+  };
+
+  const openPromoteApplicantModal = (applicant: Applicant) => {
+    setEditingRecruit(null);
+    setPromotingApplicant(applicant);
     setRecruitModalOpen(true);
   };
 
@@ -109,6 +157,8 @@ function AuthenticatedWorkspace() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         pendingCount={metrics.pendingSettlementsCount}
+        applicantCount={applicants.length}
+        examSubmissionCount={examSubmissions.length}
         recruitCount={recruits.length}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
@@ -157,6 +207,35 @@ function AuthenticatedWorkspace() {
                   onMarkPaid={(id) => void updatePayoutStatus(id, 'Paid')}
                   onInspectPayout={(p) => setInspectedPayoutId(p.id)}
                   onOpenRecordPayout={() => openRecordPayoutModal()}
+                />
+              )}
+
+              {activeTab === 'applicants' && (
+                <ApplicantsView
+                  applicants={applicants}
+                  onAddApplicant={openAddApplicantModal}
+                  onEditApplicant={openEditApplicantModal}
+                  onChangeStage={(id, stage) =>
+                    void updateApplicantStage(id, stage)
+                  }
+                  onDeleteApplicant={(id) => void deleteApplicant(id)}
+                  onConvertToRecruit={openPromoteApplicantModal}
+                />
+              )}
+
+              {activeTab === 'forms' && (
+                <GoogleFormsView
+                  examForms={examForms}
+                  examSubmissions={examSubmissions}
+                  applicantInvites={applicantInvites}
+                  applicants={applicants}
+                  onSaveExamForm={saveExamForm}
+                  onDeleteExamForm={deleteExamForm}
+                  onSaveExamSubmission={saveExamSubmission}
+                  onDeleteExamSubmission={deleteExamSubmission}
+                  onIssueInvite={issueApplicantInvite}
+                  onRevokeInvite={revokeApplicantInvite}
+                  onAddApplicant={addApplicant}
                 />
               )}
 
@@ -215,13 +294,47 @@ function AuthenticatedWorkspace() {
       <RecruitModal
         open={recruitModalOpen}
         editingRecruit={editingRecruit}
+        prefillData={
+          promotingApplicant
+            ? {
+                name: promotingApplicant.name,
+                role: promotingApplicant.targetRole,
+                company: promotingApplicant.targetCompany,
+                email: promotingApplicant.email,
+              }
+            : null
+        }
         rules={rules}
-        onClose={() => setRecruitModalOpen(false)}
+        onClose={() => {
+          setRecruitModalOpen(false);
+          setPromotingApplicant(null);
+        }}
         onSave={(input, existingId) => {
           if (existingId) {
             void updateRecruit(existingId, input);
           } else {
-            void addRecruit(input);
+            const sourceApplicant = promotingApplicant;
+            void addRecruit(input).then((created) => {
+              if (created && sourceApplicant) {
+                void updateApplicant(sourceApplicant.id, {
+                  stage: 'Hired',
+                  convertedRecruitId: created.id,
+                });
+              }
+            });
+          }
+        }}
+      />
+
+      <ApplicantModal
+        open={applicantModalOpen}
+        editingApplicant={editingApplicant}
+        onClose={() => setApplicantModalOpen(false)}
+        onSave={(input, existingId) => {
+          if (existingId) {
+            void updateApplicant(existingId, input);
+          } else {
+            void addApplicant(input);
           }
         }}
       />
@@ -241,9 +354,10 @@ function AuthenticatedWorkspace() {
 }
 
 function AppGate() {
-  const { user, authReady } = useFirebaseAuth();
+  const { user, authReady, applicantProfile, profileLoading, signOutUser } =
+    useFirebaseAuth();
 
-  if (!authReady) {
+  if (!authReady || profileLoading) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-4">
         <div className="text-center space-y-2">
@@ -258,6 +372,15 @@ function AppGate() {
 
   if (!user) {
     return <LoginPage />;
+  }
+
+  if (applicantProfile) {
+    return (
+      <ApplicantPortalView
+        profile={applicantProfile}
+        onSignOut={() => void signOutUser()}
+      />
+    );
   }
 
   if (!isWorkspaceAccessAllowed(user)) {

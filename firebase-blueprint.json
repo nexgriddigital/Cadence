@@ -316,6 +316,310 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "Applicant": {
+      "title": "Applicant",
+      "description": "Prospective candidate tracked in the recruiting pipeline prior to placement.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "targetRole": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "targetCompany": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "appliedDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "expectedSalary": {
+          "type": "number"
+        },
+        "stage": {
+          "type": "string",
+          "enum": ["New", "Screening", "Interview", "Offer", "Hired", "Rejected"]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "convertedRecruitId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "email",
+        "phone",
+        "targetRole",
+        "targetCompany",
+        "source",
+        "appliedDate",
+        "expectedSalary",
+        "stage",
+        "notes",
+        "convertedRecruitId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExamForm": {
+      "title": "ExamForm",
+      "description": "Linked or created Google Form used to administer the Duolingo 100+ and anti-AI screening exam.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "googleFormId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "responderUri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "editUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "qFullName": { "type": "string", "maxLength": 120 },
+        "qEmail": { "type": "string", "maxLength": 120 },
+        "qTargetRole": { "type": "string", "maxLength": 120 },
+        "qDuolingoScore": { "type": "string", "maxLength": 120 },
+        "qDuolingoProof": { "type": "string", "maxLength": 120 },
+        "qScenario": { "type": "string", "maxLength": 120 },
+        "qTrickConstraint": { "type": "string", "maxLength": 120 },
+        "qTrickLogic": { "type": "string", "maxLength": 120 },
+        "qTrickCanary": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "googleFormId",
+        "title",
+        "responderUri",
+        "editUrl",
+        "qFullName",
+        "qEmail",
+        "qTargetRole",
+        "qDuolingoScore",
+        "qDuolingoProof",
+        "qScenario",
+        "qTrickConstraint",
+        "qTrickLogic",
+        "qTrickCanary",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExamSubmission": {
+      "title": "ExamSubmission",
+      "description": "Analyzed applicant exam submission including Duolingo verification, anti-AI trick checks, and Gemini authenticity review.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "googleFormId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "responseId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "applicantName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "applicantEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "targetRole": { "type": "string", "maxLength": 120 },
+        "duolingoScore": { "type": "number" },
+        "duolingoProof": { "type": "string", "maxLength": 300 },
+        "duolingoPassed": { "type": "boolean" },
+        "canaryTriggered": { "type": "boolean" },
+        "trickQuestionsPassed": { "type": "boolean" },
+        "aiLikelihoodPct": { "type": "number" },
+        "aiSuspected": { "type": "boolean" },
+        "qualityScore": { "type": "number" },
+        "passed": { "type": "boolean" },
+        "flags": { "type": "array" },
+        "summary": { "type": "string", "maxLength": 500 },
+        "inviteCode": {
+          "type": "string",
+          "pattern": "^CAD-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+        },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "googleFormId",
+        "responseId",
+        "applicantName",
+        "applicantEmail",
+        "targetRole",
+        "duolingoScore",
+        "duolingoProof",
+        "duolingoPassed",
+        "canaryTriggered",
+        "trickQuestionsPassed",
+        "aiLikelihoodPct",
+        "aiSuspected",
+        "qualityScore",
+        "passed",
+        "flags",
+        "summary",
+        "inviteCode",
+        "submittedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ApplicantInvite": {
+      "title": "ApplicantInvite",
+      "description": "Single-use registration code issued to a passing applicant allowing Cadence account creation.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^CAD-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+        },
+        "recruiterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "applicantName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "applicantEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "targetRole": { "type": "string", "maxLength": 120 },
+        "duolingoScore": { "type": "number" },
+        "examScore": { "type": "number" },
+        "aiLikelihoodPct": { "type": "number" },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Used", "Revoked"]
+        },
+        "usedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "code",
+        "recruiterUid",
+        "applicantName",
+        "applicantEmail",
+        "targetRole",
+        "duolingoScore",
+        "examScore",
+        "aiLikelihoodPct",
+        "status",
+        "usedByUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ApplicantProfile": {
+      "title": "ApplicantProfile",
+      "description": "Authenticated applicant account profile created after passing the exam and redeeming a recruiter-issued registration code.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recruiterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "inviteCode": {
+          "type": "string",
+          "pattern": "^CAD-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "targetRole": { "type": "string", "maxLength": 120 },
+        "duolingoScore": { "type": "number" },
+        "examScore": { "type": "number" },
+        "aiLikelihoodPct": { "type": "number" },
+        "status": {
+          "type": "string",
+          "enum": ["Approved"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "recruiterUid",
+        "inviteCode",
+        "name",
+        "email",
+        "targetRole",
+        "duolingoScore",
+        "examScore",
+        "aiLikelihoodPct",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -338,6 +642,26 @@
     "/users/{userId}/performanceTargets/{targetId}": {
       "schema": { "$ref": "#/entities/PerformanceTarget" },
       "description": "Monthly recruitment goals and commission multipliers per recruited employee."
+    },
+    "/users/{userId}/applicants/{applicantId}": {
+      "schema": { "$ref": "#/entities/Applicant" },
+      "description": "Prospective job applicants tracked across recruitment pipeline stages."
+    },
+    "/users/{userId}/examForms/{formId}": {
+      "schema": { "$ref": "#/entities/ExamForm" },
+      "description": "Google Forms linked to the recruiter workspace for Duolingo 100+ and anti-AI screening exams."
+    },
+    "/users/{userId}/examSubmissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/ExamSubmission" },
+      "description": "Analyzed screening exam submissions with Duolingo verification and AI detection results."
+    },
+    "/applicantInvites/{code}": {
+      "schema": { "$ref": "#/entities/ApplicantInvite" },
+      "description": "Recruiter-issued single-use registration codes gating applicant account creation."
+    },
+    "/applicantProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/ApplicantProfile" },
+      "description": "Approved applicant account profiles linked to a redeemed invite code."
     }
   }
 }

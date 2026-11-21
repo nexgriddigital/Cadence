@@ -12,6 +12,7 @@ import { PAYMENT_METHOD_TYPES } from '../utils/commissionEngine';
 interface RecruitModalProps {
   open: boolean;
   editingRecruit: Recruit | null;
+  prefillData?: Partial<Pick<RecruitInput, 'name' | 'role' | 'company' | 'email'>> | null;
   rules: CommissionRuleSet;
   onClose: () => void;
   onSave: (input: RecruitInput, existingId?: string) => void;
@@ -20,6 +21,7 @@ interface RecruitModalProps {
 export function RecruitModal({
   open,
   editingRecruit,
+  prefillData = null,
   rules,
   onClose,
   onSave,
@@ -55,10 +57,10 @@ export function RecruitModal({
       setPreferredPaymentMethod(editingRecruit.preferredPaymentMethod);
       setPaymentAccountDetail(editingRecruit.paymentAccountDetail);
     } else {
-      setName('');
-      setRole('');
-      setCompany('');
-      setEmail('');
+      setName(prefillData?.name ?? '');
+      setRole(prefillData?.role ?? '');
+      setCompany(prefillData?.company ?? '');
+      setEmail(prefillData?.email ?? '');
       setStartDate(new Date().toISOString().slice(0, 10));
       setCommissionModel('percentage');
       setCustomValue('');
@@ -66,7 +68,7 @@ export function RecruitModal({
       setPaymentAccountDetail('');
     }
     setError('');
-  }, [open, editingRecruit]);
+  }, [open, editingRecruit, prefillData]);
 
   if (!open) return null;
 

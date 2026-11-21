@@ -10,6 +10,8 @@ interface TopBarProps {
 const TAB_TITLES: Record<DashboardTab, string> = {
   overview: 'Overview',
   ledger: 'Payout Ledger',
+  applicants: 'Applicants',
+  forms: 'Google Forms Screening Exam',
   recruits: 'Recruited Employees',
   'payment-methods': 'Payment Methods',
   rules: 'Commission & Bonus Rules',

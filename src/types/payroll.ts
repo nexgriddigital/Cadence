@@ -12,9 +12,104 @@ export type CommissionModel = 'percentage' | 'flat';
 export type DashboardTab =
   | 'overview'
   | 'ledger'
+  | 'applicants'
+  | 'forms'
   | 'recruits'
   | 'payment-methods'
   | 'rules';
+
+export type ApplicantStage =
+  | 'New'
+  | 'Screening'
+  | 'Interview'
+  | 'Offer'
+  | 'Hired'
+  | 'Rejected';
+
+export type InviteCodeStatus = 'Active' | 'Used' | 'Revoked';
+
+export interface ExamFormQuestionMap {
+  qFullName: string;
+  qEmail: string;
+  qTargetRole: string;
+  qDuolingoScore: string;
+  qDuolingoProof: string;
+  qScenario: string;
+  qTrickConstraint: string;
+  qTrickLogic: string;
+  qTrickCanary: string;
+}
+
+export interface ExamFormRecord extends ExamFormQuestionMap {
+  id: string;
+  googleFormId: string;
+  title: string;
+  responderUri: string;
+  editUrl: string;
+}
+
+export interface ExamSubmissionRecord {
+  id: string;
+  googleFormId: string;
+  responseId: string;
+  applicantName: string;
+  applicantEmail: string;
+  targetRole: string;
+  duolingoScore: number;
+  duolingoProof: string;
+  duolingoPassed: boolean;
+  canaryTriggered: boolean;
+  trickQuestionsPassed: boolean;
+  aiLikelihoodPct: number;
+  aiSuspected: boolean;
+  qualityScore: number;
+  passed: boolean;
+  flags: string[];
+  summary: string;
+  inviteCode: string | null;
+  submittedAt: string;
+}
+
+export interface ApplicantInvite {
+  code: string;
+  recruiterUid: string;
+  applicantName: string;
+  applicantEmail: string;
+  targetRole: string;
+  duolingoScore: number;
+  examScore: number;
+  aiLikelihoodPct: number;
+  status: InviteCodeStatus;
+  usedByUid: string | null;
+}
+
+export interface ApplicantProfile {
+  uid: string;
+  recruiterUid: string;
+  inviteCode: string;
+  name: string;
+  email: string;
+  targetRole: string;
+  duolingoScore: number;
+  examScore: number;
+  aiLikelihoodPct: number;
+  status: 'Approved';
+}
+
+export interface Applicant {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  targetRole: string;
+  targetCompany: string;
+  source: string;
+  appliedDate: string; // YYYY-MM-DD
+  expectedSalary: number;
+  stage: ApplicantStage;
+  notes: string;
+  convertedRecruitId: string | null;
+}
 
 export interface Recruit {
   id: string;
