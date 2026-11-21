@@ -92,7 +92,7 @@ function formatAuthError(error: unknown, fallback: string): string {
       return `Domain "${host}" is not authorized in Firebase Authentication. Add "${host}" under Firebase Console → Authentication → Settings → Authorized domains.`;
     }
     case 'auth/operation-not-allowed':
-      return 'Email/Password sign-up is currently disabled in Firebase Console. Enable "Enable create (sign-up)" under Authentication → Settings → User actions for invite-code applicant registration.';
+      return 'Email/Password authentication or sign-up is disabled in Firebase Console. Verify Email/Password is enabled under Authentication → Sign-in method and "Enable create (sign-up)" is checked under Settings → User actions.';
     case 'auth/email-already-in-use':
       return 'An account with this email address already exists. Switch to Applicant Sign In instead.';
     case 'auth/weak-password':
