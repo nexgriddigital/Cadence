@@ -1,8 +1,9 @@
 import { Component, type ErrorInfo, type ReactNode, useMemo, useState } from 'react';
 import type { DashboardTab, PayoutRecord, Recruit } from './types/payroll';
 import { FirebaseProvider, useFirebaseAuth } from './contexts/FirebaseContext';
+import { isWorkspaceAccessAllowed } from './firebase';
 import { usePayrollStore } from './hooks/usePayrollStore';
-import { LoginPage } from './components/LoginPage';
+import { LoginPage, VerifyEmailView } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { OverviewView } from './components/OverviewView';
@@ -257,6 +258,10 @@ function AppGate() {
 
   if (!user) {
     return <LoginPage />;
+  }
+
+  if (!isWorkspaceAccessAllowed(user)) {
+    return <VerifyEmailView />;
   }
 
   return <AuthenticatedWorkspace />;

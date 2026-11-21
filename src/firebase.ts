@@ -9,6 +9,15 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+export const DESIGNATED_OWNER_UID = '82SIYo8O2hdtNqBAH8stAkPBZYq2';
+
+export function isWorkspaceAccessAllowed(
+  user: { uid: string; emailVerified: boolean } | null
+): boolean {
+  if (!user) return false;
+  return user.emailVerified || user.uid === DESIGNATED_OWNER_UID;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

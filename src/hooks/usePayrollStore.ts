@@ -19,7 +19,12 @@ import {
   LEGACY_DEMO_RECRUIT_IDS,
 } from '../data/seedData';
 import { useFirebaseAuth } from '../contexts/FirebaseContext';
-import { OperationType, db, handleFirestoreError } from '../firebase';
+import {
+  OperationType,
+  db,
+  handleFirestoreError,
+  isWorkspaceAccessAllowed,
+} from '../firebase';
 import type {
   CommissionModel,
   CommissionRuleSet,
@@ -87,7 +92,7 @@ export function usePayrollStore() {
   // Ensure workspace root and default rules exist on login, remove any legacy demo docs, then subscribe
   useEffect(() => {
     if (!authReady) return;
-    if (!user) {
+    if (!user || !isWorkspaceAccessAllowed(user)) {
       setRecruits([]);
       setPayouts([]);
       setRules(DEFAULT_RULES);
@@ -105,7 +110,9 @@ export function usePayrollStore() {
 
     const uid = user.uid;
     const initialDisplayName = clampText(
-      user.displayName?.trim() || 'Recruiter',
+      user.displayName?.trim() ||
+        user.email?.split('@')[0]?.trim() ||
+        'Recruiter',
       120
     );
     const userDocRef = doc(db, 'users', uid);
