@@ -81,6 +81,16 @@ service cloud.firestore {
         (flags.size() == 0 || (flags[0] is string && flags[0].size() <= 300));
     }
 
+    function isValidExamTestType(testType) {
+      return testType is string && testType.size() <= 32 &&
+        testType in ['english_comm', 'analytical_logic', 'technical_ops', 'role_scenario'];
+    }
+
+    function isValidTestAssignmentStatus(status) {
+      return status is string && status.size() <= 16 &&
+        status in ['Assigned', 'Passed', 'Failed'];
+    }
+
     // --- Entity Validation Blueprints (create + update) ---
     function isValidUserWorkspace(data, userId) {
       return data.keys().hasAll(['uid', 'displayName', 'seededDemo', 'createdAt', 'updatedAt']) &&
@@ -249,13 +259,13 @@ service cloud.firestore {
 
     function isValidExamForm(data, userId) {
       return data.keys().hasAll([
-          'ownerId', 'googleFormId', 'title', 'responderUri', 'editUrl',
+          'ownerId', 'googleFormId', 'testType', 'title', 'responderUri', 'editUrl',
           'qFullName', 'qEmail', 'qTargetRole', 'qDuolingoScore', 'qDuolingoProof',
           'qScenario', 'qTrickConstraint', 'qTrickLogic', 'qTrickCanary',
           'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'ownerId', 'googleFormId', 'title', 'responderUri', 'editUrl',
+          'ownerId', 'googleFormId', 'testType', 'title', 'responderUri', 'editUrl',
           'qFullName', 'qEmail', 'qTargetRole', 'qDuolingoScore', 'qDuolingoProof',
           'qScenario', 'qTrickConstraint', 'qTrickLogic', 'qTrickCanary',
           'createdAt', 'updatedAt'
@@ -264,6 +274,7 @@ service cloud.firestore {
         data.ownerId == userId &&
         data.ownerId == request.auth.uid &&
         data.googleFormId is string && data.googleFormId.size() >= 1 && data.googleFormId.size() <= 160 &&
+        isValidExamTestType(data.testType) &&
         data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
         data.responderUri is string && data.responderUri.size() >= 1 && data.responderUri.size() <= 500 &&
         data.editUrl is string && data.editUrl.size() >= 1 && data.editUrl.size() <= 500 &&
@@ -282,14 +293,14 @@ service cloud.firestore {
 
     function isValidExamSubmission(data, userId) {
       return data.keys().hasAll([
-          'ownerId', 'googleFormId', 'responseId', 'applicantName', 'applicantEmail',
+          'ownerId', 'googleFormId', 'testType', 'responseId', 'applicantName', 'applicantEmail',
           'targetRole', 'duolingoScore', 'duolingoProof', 'duolingoPassed',
           'canaryTriggered', 'trickQuestionsPassed', 'aiLikelihoodPct', 'aiSuspected',
           'qualityScore', 'passed', 'flags', 'summary', 'inviteCode', 'submittedAt',
           'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'ownerId', 'googleFormId', 'responseId', 'applicantName', 'applicantEmail',
+          'ownerId', 'googleFormId', 'testType', 'responseId', 'applicantName', 'applicantEmail',
           'targetRole', 'duolingoScore', 'duolingoProof', 'duolingoPassed',
           'canaryTriggered', 'trickQuestionsPassed', 'aiLikelihoodPct', 'aiSuspected',
           'qualityScore', 'passed', 'flags', 'summary', 'inviteCode', 'submittedAt',
@@ -299,6 +310,7 @@ service cloud.firestore {
         data.ownerId == userId &&
         data.ownerId == request.auth.uid &&
         data.googleFormId is string && data.googleFormId.size() >= 1 && data.googleFormId.size() <= 160 &&
+        isValidExamTestType(data.testType) &&
         data.responseId is string && data.responseId.size() >= 1 && data.responseId.size() <= 160 &&
         data.applicantName is string && data.applicantName.size() >= 1 && data.applicantName.size() <= 120 &&
         data.applicantEmail is string && data.applicantEmail.size() >= 3 && data.applicantEmail.size() <= 160 &&
@@ -316,6 +328,40 @@ service cloud.firestore {
         data.summary is string && data.summary.size() <= 500 &&
         (data.inviteCode == null || isValidInviteCode(data.inviteCode)) &&
         data.submittedAt is string && data.submittedAt.size() <= 64 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidApplicantTestAssignment(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'applicantId', 'applicantName', 'applicantEmail', 'testType',
+          'googleFormId', 'formTitle', 'responderUri', 'status', 'submissionId',
+          'duolingoScore', 'aiLikelihoodPct', 'qualityScore', 'assignedAt',
+          'completedAt', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'applicantId', 'applicantName', 'applicantEmail', 'testType',
+          'googleFormId', 'formTitle', 'responderUri', 'status', 'submissionId',
+          'duolingoScore', 'aiLikelihoodPct', 'qualityScore', 'assignedAt',
+          'completedAt', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == userId &&
+        data.ownerId == request.auth.uid &&
+        isValidId(data.applicantId) &&
+        data.applicantName is string && data.applicantName.size() >= 1 && data.applicantName.size() <= 120 &&
+        data.applicantEmail is string && data.applicantEmail.size() >= 3 && data.applicantEmail.size() <= 160 &&
+        isValidExamTestType(data.testType) &&
+        data.googleFormId is string && data.googleFormId.size() <= 160 &&
+        data.formTitle is string && data.formTitle.size() <= 160 &&
+        data.responderUri is string && data.responderUri.size() <= 500 &&
+        isValidTestAssignmentStatus(data.status) &&
+        (data.submissionId == null || isValidId(data.submissionId)) &&
+        isNumberInRange(data.duolingoScore, 0, 160) &&
+        isNumberInRange(data.aiLikelihoodPct, 0, 100) &&
+        isNumberInRange(data.qualityScore, 0, 100) &&
+        data.assignedAt is string && data.assignedAt.size() <= 64 &&
+        data.completedAt is string && data.completedAt.size() <= 64 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -536,7 +582,7 @@ service cloud.firestore {
           incoming().createdAt == existing().createdAt &&
           incoming().updatedAt == request.time &&
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'title', 'responderUri', 'editUrl', 'qFullName', 'qEmail',
+            'testType', 'title', 'responderUri', 'editUrl', 'qFullName', 'qEmail',
             'qTargetRole', 'qDuolingoScore', 'qDuolingoProof', 'qScenario',
             'qTrickConstraint', 'qTrickLogic', 'qTrickCanary', 'updatedAt'
           ]) &&
@@ -560,12 +606,42 @@ service cloud.firestore {
           isValidExamSubmission(incoming(), userId) &&
           incoming().ownerId == existing().ownerId &&
           incoming().googleFormId == existing().googleFormId &&
+          incoming().testType == existing().testType &&
           incoming().responseId == existing().responseId &&
           incoming().createdAt == existing().createdAt &&
           incoming().updatedAt == request.time &&
           incoming().diff(existing()).affectedKeys().hasOnly(['inviteCode', 'updatedAt']) &&
           exists(/databases/$(database)/documents/users/$(userId));
         allow delete: if isValidId(userId) && isValidId(submissionId) &&
+          isOwner(userId) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      match /applicantTests/{assignmentId} {
+        allow get: if isValidId(userId) && isValidId(assignmentId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(assignmentId) &&
+          isOwner(userId) &&
+          isValidApplicantTestAssignment(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)) &&
+          existsAfter(/databases/$(database)/documents/users/$(userId)/applicants/$(incoming().applicantId));
+        allow update: if isValidId(userId) && isValidId(assignmentId) &&
+          isOwner(userId) &&
+          isValidApplicantTestAssignment(incoming(), userId) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().applicantId == existing().applicantId &&
+          incoming().testType == existing().testType &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'applicantName', 'applicantEmail', 'googleFormId', 'formTitle',
+            'responderUri', 'status', 'submissionId', 'duolingoScore',
+            'aiLikelihoodPct', 'qualityScore', 'completedAt', 'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isValidId(userId) && isValidId(assignmentId) &&
           isOwner(userId) &&
           exists(/databases/$(database)/documents/users/$(userId));
       }

@@ -382,6 +382,20 @@ export function ApplicantModal({
             />
           </div>
 
+          {!editingApplicant && (
+            <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-lg space-y-1">
+              <div className="text-xs font-semibold text-blue-900">
+                Automatic 4-Test Google Forms Assignment
+              </div>
+              <p className="text-xs text-blue-800/90 leading-relaxed">
+                Entering this applicant automatically assigns all 4 screening
+                tests — English &amp; Communication, Analytical Logic, Technical
+                &amp; Operations, and Role Scenario — linked to your connected
+                Google Forms.
+              </p>
+            </div>
+          )}
+
           <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
             <button
               type="button"
@@ -394,7 +408,7 @@ export function ApplicantModal({
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors"
             >
-              {editingApplicant ? 'Save Changes' : 'Add Applicant'}
+              {editingApplicant ? 'Save Changes' : 'Add Applicant & Assign 4 Tests'}
             </button>
           </div>
         </form>

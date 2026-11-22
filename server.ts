@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   MIN_DUOLINGO_SCORE,
+  getExamTestSpec,
+  isValidExamTestType,
   runDeterministicExamChecks,
 } from './src/utils/examBlueprint';
 
@@ -33,6 +35,7 @@ function createGeminiClient(): GoogleGenAI {
 }
 
 interface AnalyzeExamRequestBody {
+  testType?: unknown;
   applicantName?: unknown;
   applicantEmail?: unknown;
   targetRole?: unknown;
@@ -77,7 +80,13 @@ async function startServer() {
         return;
       }
 
+      const testType = isValidExamTestType(body.testType)
+        ? body.testType
+        : 'english_comm';
+      const spec = getExamTestSpec(testType);
+
       const deterministic = runDeterministicExamChecks({
+        testType,
         duolingoScoreRaw,
         scenarioResponse,
         trickConstraint,
@@ -90,6 +99,7 @@ async function startServer() {
         'You are a strict hiring exam proctor and forensic writing analyst evaluating a Google Forms applicant submission.',
         'Evaluate whether the answers were genuinely written by a human applicant or generated/assisted by an AI assistant, and evaluate answer quality.',
         '',
+        `Exam Track: ${spec.label} (${spec.summary})`,
         `Applicant: ${applicantName} (${applicantEmail})`,
         `Target Role: ${targetRole || 'Not specified'}`,
         `Reported Duolingo Score: ${deterministic.duolingoScore} (minimum required: ${MIN_DUOLINGO_SCORE})`,
@@ -97,16 +107,16 @@ async function startServer() {
         '',
         '--- Deterministic Anti-AI Checks Already Computed ---',
         `- Duolingo >= ${MIN_DUOLINGO_SCORE}: ${deterministic.duolingoPassed}`,
-        `- Canary Prompt-Injection Phrase Triggered ("blue pineapple synergy"): ${deterministic.canaryTriggered}`,
+        `- Canary Prompt-Injection Phrase Triggered ("${spec.canaryPhrase}"): ${deterministic.canaryTriggered}`,
         `- Precision Constraint Trick Passed (2 sentences, no forbidden AI clichés): ${deterministic.constraintPassed}`,
-        `- Scheduling Logic Trap Passed (2 before Meron, Meron is last): ${deterministic.logicPassed}`,
+        `- Reasoning Logic Trap Passed (${spec.expectedLogicSummary}): ${deterministic.logicPassed}`,
         '',
         '--- Candidate Answers ---',
         `1) Practical Scenario Answer:\n${scenarioResponse || '(blank)'}`,
         '',
         `2) Precision Constraint Trick Answer (asked for exactly 2 sentences, no forbidden words, ending with current city):\n${trickConstraint || '(blank)'}`,
         '',
-        `3) Scheduling Logic Trap Answer:\n${trickLogic || '(blank)'}`,
+        `3) Reasoning Logic Trap Answer (${spec.expectedLogicSummary}):\n${trickLogic || '(blank)'}`,
         '',
         `4) Written Communication + Canary Trap Answer:\n${trickCanary || '(blank)'}`,
         '',
@@ -222,6 +232,7 @@ async function startServer() {
         qualityScore >= 60;
 
       res.json({
+        testType,
         duolingoScore: deterministic.duolingoScore,
         duolingoPassed: deterministic.duolingoPassed,
         canaryTriggered: deterministic.canaryTriggered,

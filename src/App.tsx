@@ -69,6 +69,7 @@ function AuthenticatedWorkspace() {
     performanceTargets,
     examForms,
     examSubmissions,
+    applicantTests,
     applicantInvites,
     loading,
     syncError,
@@ -81,6 +82,7 @@ function AuthenticatedWorkspace() {
     addRecruit,
     updateRecruit,
     addApplicant,
+    assignMissingTestsForApplicant,
     updateApplicant,
     updateApplicantStage,
     deleteApplicant,
@@ -213,6 +215,8 @@ function AuthenticatedWorkspace() {
               {activeTab === 'applicants' && (
                 <ApplicantsView
                   applicants={applicants}
+                  applicantTests={applicantTests}
+                  examForms={examForms}
                   onAddApplicant={openAddApplicantModal}
                   onEditApplicant={openEditApplicantModal}
                   onChangeStage={(id, stage) =>
@@ -220,6 +224,10 @@ function AuthenticatedWorkspace() {
                   }
                   onDeleteApplicant={(id) => void deleteApplicant(id)}
                   onConvertToRecruit={openPromoteApplicantModal}
+                  onAssignMissingTests={(applicant) =>
+                    void assignMissingTestsForApplicant(applicant)
+                  }
+                  onOpenGoogleForms={() => setActiveTab('forms')}
                 />
               )}
 
@@ -227,6 +235,7 @@ function AuthenticatedWorkspace() {
                 <GoogleFormsView
                   examForms={examForms}
                   examSubmissions={examSubmissions}
+                  applicantTests={applicantTests}
                   applicantInvites={applicantInvites}
                   applicants={applicants}
                   onSaveExamForm={saveExamForm}

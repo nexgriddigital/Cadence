@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FilePlus2,
   KeyRound,
+  Layers,
   Link2,
   RefreshCw,
   ShieldAlert,
@@ -23,8 +24,10 @@ import { useFirebaseAuth } from '../contexts/FirebaseContext';
 import type {
   Applicant,
   ApplicantInvite,
+  ApplicantTestAssignment,
   ExamFormRecord,
   ExamSubmissionRecord,
+  ExamTestType,
 } from '../types/payroll';
 import type {
   ApplicantInput,
@@ -32,8 +35,10 @@ import type {
   SaveExamSubmissionInput,
 } from '../hooks/usePayrollStore';
 import {
+  EXAM_TEST_SPECS,
+  EXAM_TEST_TYPES,
   MIN_DUOLINGO_SCORE,
-  SCREENING_EXAM_QUESTIONS,
+  getExamTestSpec,
 } from '../utils/examBlueprint';
 import {
   analyzeExamSubmission,
@@ -47,6 +52,7 @@ import {
 interface GoogleFormsViewProps {
   examForms: ExamFormRecord[];
   examSubmissions: ExamSubmissionRecord[];
+  applicantTests: ApplicantTestAssignment[];
   applicantInvites: ApplicantInvite[];
   applicants: Applicant[];
   onSaveExamForm: (input: SaveExamFormInput) => Promise<ExamFormRecord | null>;
@@ -83,9 +89,14 @@ function OfficialGoogleLogo() {
   );
 }
 
+type ConfirmCreateTarget =
+  | { mode: 'single'; testType: ExamTestType }
+  | { mode: 'all_missing'; testTypes: ExamTestType[] };
+
 export function GoogleFormsView({
   examForms,
   examSubmissions,
+  applicantTests,
   applicantInvites,
   applicants,
   onSaveExamForm,
@@ -104,13 +115,16 @@ export function GoogleFormsView({
   } = useFirebaseAuth();
 
   // Form creation confirmation dialog state
-  const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
+  const [confirmCreateTarget, setConfirmCreateTarget] =
+    useState<ConfirmCreateTarget | null>(null);
   const [newFormTitle, setNewFormTitle] = useState(
-    'Cadence Applicant Screening Exam (Duolingo 100+)'
+    EXAM_TEST_SPECS.english_comm.defaultFormTitle
   );
   const [creatingForm, setCreatingForm] = useState(false);
 
   // Link existing form state
+  const [linkTestType, setLinkTestType] =
+    useState<ExamTestType>('english_comm');
   const [linkInput, setLinkInput] = useState('');
   const [linkingForm, setLinkingForm] = useState(false);
 
@@ -121,6 +135,8 @@ export function GoogleFormsView({
 
   // UI toggles
   const [blueprintOpen, setBlueprintOpen] = useState(false);
+  const [blueprintTestType, setBlueprintTestType] =
+    useState<ExamTestType>('english_comm');
   const [manualOpen, setManualOpen] = useState(false);
   const [expandedSubmissionId, setExpandedSubmissionId] = useState<
     string | null
@@ -132,6 +148,8 @@ export function GoogleFormsView({
   );
 
   // Manual analyzer form state
+  const [manualTestType, setManualTestType] =
+    useState<ExamTestType>('english_comm');
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [manualRole, setManualRole] = useState('');
@@ -143,12 +161,25 @@ export function GoogleFormsView({
   const [manualCanary, setManualCanary] = useState('');
   const [analyzingManual, setAnalyzingManual] = useState(false);
 
+  const formsByType = useMemo(
+    () => new Map(examForms.map((f) => [f.testType, f])),
+    [examForms]
+  );
+
+  const missingTestTypes = useMemo(
+    () => EXAM_TEST_TYPES.filter((t) => !formsByType.has(t)),
+    [formsByType]
+  );
+
   const applicantEmails = useMemo(
     () => new Set(applicants.map((a) => a.email.trim().toLowerCase())),
     [applicants]
   );
 
   const stats = useMemo(() => {
+    const connectedCount = EXAM_TEST_TYPES.filter((t) =>
+      formsByType.has(t)
+    ).length;
     const total = examSubmissions.length;
     const passed = examSubmissions.filter((s) => s.passed).length;
     const aiFlagged = examSubmissions.filter(
@@ -157,8 +188,11 @@ export function GoogleFormsView({
     const activeCodes = applicantInvites.filter(
       (i) => i.status === 'Active'
     ).length;
-    return { total, passed, aiFlagged, activeCodes };
-  }, [examSubmissions, applicantInvites]);
+    return { connectedCount, total, passed, aiFlagged, activeCodes };
+  }, [formsByType, examSubmissions, applicantInvites]);
+
+  const activeBlueprintSpec = getExamTestSpec(blueprintTestType);
+  const activeManualSpec = getExamTestSpec(manualTestType);
 
   const handleCopy = async (text: string) => {
     try {
@@ -177,7 +211,21 @@ export function GoogleFormsView({
     return connectGoogleForms();
   };
 
-  const handleConfirmedCreateForm = async () => {
+  const openSingleCreateModal = (testType: ExamTestType) => {
+    setNewFormTitle(getExamTestSpec(testType).defaultFormTitle);
+    setConfirmCreateTarget({ mode: 'single', testType });
+  };
+
+  const openAllMissingCreateModal = () => {
+    if (missingTestTypes.length === 0) return;
+    setConfirmCreateTarget({
+      mode: 'all_missing',
+      testTypes: missingTestTypes,
+    });
+  };
+
+  const handleConfirmedCreateForms = async () => {
+    if (!confirmCreateTarget) return;
     setErrorMessage(null);
     setStatusMessage(null);
     const token = await ensureFormsToken();
@@ -185,23 +233,52 @@ export function GoogleFormsView({
 
     setCreatingForm(true);
     try {
-      const created = await createScreeningExamForm(token, newFormTitle);
-      await onSaveExamForm({
-        googleFormId: created.googleFormId,
-        title: created.title,
-        responderUri: created.responderUri,
-        editUrl: created.editUrl,
-        ...created.questionMap,
-      });
-      setConfirmCreateOpen(false);
-      setStatusMessage(
-        `Created Google Form "${created.title}" with Duolingo 100+ verification and 3 anti-AI trick questions.`
-      );
+      if (confirmCreateTarget.mode === 'single') {
+        const { testType } = confirmCreateTarget;
+        const created = await createScreeningExamForm(
+          token,
+          testType,
+          newFormTitle
+        );
+        await onSaveExamForm({
+          googleFormId: created.googleFormId,
+          testType: created.testType,
+          title: created.title,
+          responderUri: created.responderUri,
+          editUrl: created.editUrl,
+          ...created.questionMap,
+        });
+        setConfirmCreateTarget(null);
+        setStatusMessage(
+          `Created "${created.title}" and automatically linked it to all existing applicant assignments for ${getExamTestSpec(testType).shortLabel}.`
+        );
+      } else {
+        let createdCount = 0;
+        for (const testType of confirmCreateTarget.testTypes) {
+          const spec = getExamTestSpec(testType);
+          const created = await createScreeningExamForm(
+            token,
+            testType,
+            spec.defaultFormTitle
+          );
+          await onSaveExamForm({
+            googleFormId: created.googleFormId,
+            testType: created.testType,
+            title: created.title,
+            responderUri: created.responderUri,
+            editUrl: created.editUrl,
+            ...created.questionMap,
+          });
+          createdCount += 1;
+        }
+        setConfirmCreateTarget(null);
+        setStatusMessage(
+          `Created ${createdCount} Google Form screening test(s) and automatically attached their links to all assigned applicants.`
+        );
+      }
     } catch (err) {
       setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : 'Failed to create Google Form.'
+        err instanceof Error ? err.message : 'Failed to create Google Form.'
       );
     } finally {
       setCreatingForm(false);
@@ -229,13 +306,16 @@ export function GoogleFormsView({
       const metadata = await fetchFormMetadata(token, extractedId);
       await onSaveExamForm({
         googleFormId: metadata.googleFormId,
+        testType: linkTestType,
         title: metadata.title,
         responderUri: metadata.responderUri,
         editUrl: metadata.editUrl,
         ...metadata.questionMap,
       });
       setLinkInput('');
-      setStatusMessage(`Linked Google Form "${metadata.title}".`);
+      setStatusMessage(
+        `Linked "${metadata.title}" to ${getExamTestSpec(linkTestType).label} and updated existing applicant test links.`
+      );
     } catch (err) {
       setErrorMessage(
         err instanceof Error ? err.message : 'Unable to link Google Form.'
@@ -277,6 +357,7 @@ export function GoogleFormsView({
       let passedCount = 0;
       for (const candidate of newResponses) {
         const analysis = await analyzeExamSubmission({
+          testType: form.testType,
           applicantName: candidate.applicantName,
           applicantEmail: candidate.applicantEmail || 'unknown@applicant.local',
           targetRole: candidate.targetRole,
@@ -290,6 +371,7 @@ export function GoogleFormsView({
 
         await onSaveExamSubmission({
           googleFormId: form.googleFormId,
+          testType: form.testType,
           responseId: candidate.responseId,
           applicantName: candidate.applicantName,
           applicantEmail: candidate.applicantEmail || 'unknown@applicant.local',
@@ -312,7 +394,7 @@ export function GoogleFormsView({
       }
 
       setStatusMessage(
-        `Analyzed ${analyzedCount} new submission(s) from "${form.title}" — ${passedCount} passed verification.`
+        `Analyzed ${analyzedCount} new submission(s) from "${form.title}" — ${passedCount} passed verification and synced to matching applicant records.`
       );
     } catch (err) {
       setErrorMessage(
@@ -338,6 +420,7 @@ export function GoogleFormsView({
     setAnalyzingManual(true);
     try {
       const analysis = await analyzeExamSubmission({
+        testType: manualTestType,
         applicantName: manualName.trim(),
         applicantEmail: manualEmail.trim().toLowerCase(),
         targetRole: manualRole.trim(),
@@ -349,8 +432,10 @@ export function GoogleFormsView({
         trickCanary: manualCanary.trim(),
       });
 
+      const linkedForm = formsByType.get(manualTestType);
       const saved = await onSaveExamSubmission({
-        googleFormId: examForms[0]?.googleFormId ?? 'manual-screening',
+        googleFormId: linkedForm?.googleFormId ?? `manual-${manualTestType}`,
+        testType: manualTestType,
         responseId: `manual-${Date.now()}`,
         applicantName: manualName.trim(),
         applicantEmail: manualEmail.trim().toLowerCase(),
@@ -374,8 +459,8 @@ export function GoogleFormsView({
       }
       setStatusMessage(
         analysis.passed
-          ? `${manualName.trim()} passed the screening exam (Duolingo ${analysis.duolingoScore}, AI Risk ${analysis.aiLikelihoodPct}%). You can now generate their registration code.`
-          : `${manualName.trim()} did not pass screening (${analysis.flags[0] || 'failed authenticity or score checks'}).`
+          ? `${manualName.trim()} passed ${activeManualSpec.shortLabel} (Duolingo ${analysis.duolingoScore}, AI Risk ${analysis.aiLikelihoodPct}%). Any matching applicant assignment has been updated.`
+          : `${manualName.trim()} did not pass ${activeManualSpec.shortLabel} (${analysis.flags[0] || 'failed authenticity or score checks'}).`
       );
       setManualName('');
       setManualEmail('');
@@ -429,12 +514,12 @@ export function GoogleFormsView({
         appliedDate: new Date().toISOString().slice(0, 10),
         expectedSalary: 0,
         stage: submission.passed ? 'Interview' : 'Rejected',
-        notes: `Duolingo: ${submission.duolingoScore}/160 · Exam Score: ${submission.qualityScore}/100 · AI Risk: ${submission.aiLikelihoodPct}%${
+        notes: `${getExamTestSpec(submission.testType).shortLabel} · Duolingo: ${submission.duolingoScore}/160 · Exam Score: ${submission.qualityScore}/100 · AI Risk: ${submission.aiLikelihoodPct}%${
           submission.inviteCode ? ` · Code: ${submission.inviteCode}` : ''
         }`,
       });
       setStatusMessage(
-        `Added ${submission.applicantName} to the Applicants pipeline.`
+        `Added ${submission.applicantName} to the Applicants pipeline and automatically assigned all 4 screening tests.`
       );
     } catch (err) {
       setErrorMessage(
@@ -449,13 +534,13 @@ export function GoogleFormsView({
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <div className="text-xs font-medium text-slate-500">
-            Analyzed Submissions
+            Connected Test Suite
           </div>
           <div className="mt-2 font-display text-2xl font-bold tabular-nums text-slate-900">
-            {stats.total}
+            {stats.connectedCount} / 4
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Duolingo {MIN_DUOLINGO_SCORE}+ &amp; AI-checked
+            Auto-assigned to every new applicant
           </div>
         </div>
 
@@ -467,7 +552,7 @@ export function GoogleFormsView({
             {stats.passed}
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Eligible for Cadence registration
+            Out of {stats.total} analyzed submission(s)
           </div>
         </div>
 
@@ -504,7 +589,10 @@ export function GoogleFormsView({
           className="flex items-start justify-between gap-3 p-3.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl"
         >
           <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+            <AlertTriangle
+              className="w-4 h-4 shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
             <span>{errorMessage || formsAuthError}</span>
           </div>
           <button
@@ -524,7 +612,10 @@ export function GoogleFormsView({
           className="flex items-start justify-between gap-3 p-3.5 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl"
         >
           <div className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+            <CheckCircle2
+              className="w-4 h-4 shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
             <span>{statusMessage}</span>
           </div>
           <button
@@ -538,21 +629,21 @@ export function GoogleFormsView({
         </div>
       )}
 
-      {/* Google Forms Administration Card */}
+      {/* 4-Test Google Forms Screening Suite Card */}
       <section className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-slate-100">
           <div className="space-y-1">
             <h2 className="font-display text-base font-semibold text-slate-900">
-              Google Forms Screening Exam
+              4-Test Google Forms Screening Suite
             </h2>
             <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
-              Generate a Google Form enforcing a minimum{' '}
+              Every applicant entered into Cadence is automatically assigned all
+              4 Google Forms screening tests below. Each test enforces a minimum{' '}
               <span className="font-semibold text-slate-900">
-                Duolingo English Test score of {MIN_DUOLINGO_SCORE}
+                Duolingo score of {MIN_DUOLINGO_SCORE}
               </span>{' '}
-              with 3 built-in anti-AI trick questions, then sync and verify
-              human authorship before issuing a Cadence account registration
-              code.
+              plus 3 tailored anti-AI trick questions (strict constraint, logic
+              trap, and unique canary phrase).
             </p>
           </div>
 
@@ -572,14 +663,18 @@ export function GoogleFormsView({
                 </span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmCreateOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-              >
-                <FilePlus2 className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span>Create Screening Exam Form</span>
-              </button>
+              missingTestTypes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={openAllMissingCreateModal}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+                >
+                  <Layers className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    Create All {missingTestTypes.length} Missing Forms
+                  </span>
+                </button>
+              )
             )}
 
             <button
@@ -587,17 +682,181 @@ export function GoogleFormsView({
               onClick={() => setManualOpen((v) => !v)}
               className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-blue-600"
             >
-              <Sparkles className="w-4 h-4 text-blue-700 shrink-0" aria-hidden="true" />
-              <span>{manualOpen ? 'Close Manual Test' : 'Analyze Response Manually'}</span>
+              <Sparkles
+                className="w-4 h-4 text-blue-700 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                {manualOpen ? 'Close Manual Test' : 'Analyze Response Manually'}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Link existing Google Form row */}
+        {/* 4 Test Type Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {EXAM_TEST_TYPES.map((testType) => {
+            const spec = getExamTestSpec(testType);
+            const connectedForm = formsByType.get(testType);
+            const assignedCount = applicantTests.filter(
+              (t) => t.testType === testType
+            ).length;
+            const passedCount = applicantTests.filter(
+              (t) => t.testType === testType && t.status === 'Passed'
+            ).length;
+            const isSyncing =
+              connectedForm && syncingFormId === connectedForm.id;
+
+            return (
+              <div
+                key={testType}
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-4 ${
+                  connectedForm
+                    ? 'bg-slate-50/70 border-slate-200'
+                    : 'bg-white border-dashed border-slate-300'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {spec.label}
+                      </h3>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                        {spec.summary}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[11px] font-semibold whitespace-nowrap ${
+                        connectedForm ? 'text-emerald-700' : 'text-amber-700'
+                      }`}
+                    >
+                      {connectedForm ? 'Connected' : 'Not Connected'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 font-mono tabular-nums pt-1">
+                    <span>Assigned: {assignedCount}</span>
+                    <span>Passed: {passedCount}</span>
+                    <span>Logic: {spec.expectedLogicSummary}</span>
+                  </div>
+                </div>
+
+                {connectedForm ? (
+                  <div className="space-y-3 pt-3 border-t border-slate-200/80">
+                    <div className="text-xs text-slate-700 font-medium truncate">
+                      {connectedForm.title}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <a
+                        href={connectedForm.responderUri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-blue-700 hover:text-blue-800"
+                      >
+                        <span>Open Form</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleCopy(connectedForm.responderUri)
+                        }
+                        className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900"
+                      >
+                        {copiedValue === connectedForm.responderUri ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-700" />
+                            <span className="text-emerald-700">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Link</span>
+                          </>
+                        )}
+                      </button>
+                      <a
+                        href={connectedForm.editUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900"
+                      >
+                        <span>Edit</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleSyncFormResponses(connectedForm)
+                        }
+                        disabled={Boolean(isSyncing)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-xs font-medium rounded-lg transition-colors"
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${
+                            isSyncing ? 'animate-spin' : ''
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span>
+                          {isSyncing
+                            ? 'Syncing & Analyzing...'
+                            : 'Sync & Analyze Responses'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void onDeleteExamForm(connectedForm.id)}
+                        aria-label={`Disconnect ${spec.label}`}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-500">
+                      9 questions · Duolingo {MIN_DUOLINGO_SCORE}+ · 3 AI traps
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openSingleCreateModal(testType)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      <FilePlus2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Create Google Form</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Link existing Google Form row with Test Type selector */}
         <form
           onSubmit={(e) => void handleLinkExistingForm(e)}
-          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+          className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 pt-2 border-t border-slate-100"
         >
+          <select
+            value={linkTestType}
+            onChange={(e) => setLinkTestType(e.target.value as ExamTestType)}
+            aria-label="Select test type for linked Google Form"
+            className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+          >
+            {EXAM_TEST_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {getExamTestSpec(t).label}
+              </option>
+            ))}
+          </select>
+
           <div className="relative flex-1">
             <Link2
               className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -607,11 +866,12 @@ export function GoogleFormsView({
               type="text"
               value={linkInput}
               onChange={(e) => setLinkInput(e.target.value)}
-              placeholder="Link an existing Google Form edit URL (https://docs.google.com/forms/d/FORM_ID/edit) or Form ID"
+              placeholder="Link existing Google Form edit URL (https://docs.google.com/forms/d/FORM_ID/edit) or Form ID"
               aria-label="Existing Google Form URL or ID"
               className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
             />
           </div>
+
           <button
             type="submit"
             disabled={linkingForm || !linkInput.trim()}
@@ -621,110 +881,7 @@ export function GoogleFormsView({
           </button>
         </form>
 
-        {/* Active linked forms */}
-        {examForms.length === 0 ? (
-          <div className="p-5 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
-            <p className="text-sm font-medium text-slate-800">
-              No Google Form connected yet
-            </p>
-            <p className="text-xs text-slate-500 max-w-lg mx-auto">
-              Connect Google Forms above to auto-generate the Cadence Screening
-              Exam (Duolingo 100+ + 3 anti-AI trick questions), or use{' '}
-              <span className="font-medium text-slate-700">
-                Analyze Response Manually
-              </span>{' '}
-              to evaluate answers directly.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {examForms.map((form) => (
-              <div
-                key={form.id}
-                className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-              >
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-slate-900 truncate">
-                      {form.title}
-                    </h3>
-                  </div>
-                  <div className="text-xs text-slate-500 font-mono truncate">
-                    Form ID: {form.googleFormId}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
-                    <a
-                      href={form.responderUri}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-medium text-blue-700 hover:text-blue-800"
-                    >
-                      <span>Open Applicant Form</span>
-                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopy(form.responderUri)}
-                      className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900"
-                    >
-                      {copiedValue === form.responderUri ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-700" />
-                          <span className="text-emerald-700">Link Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Applicant Link</span>
-                        </>
-                      )}
-                    </button>
-                    <a
-                      href={form.editUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900"
-                    >
-                      <span>Edit in Google Forms</span>
-                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                    </a>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => void handleSyncFormResponses(form)}
-                    disabled={syncingFormId === form.id}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 ${
-                        syncingFormId === form.id ? 'animate-spin' : ''
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span>
-                      {syncingFormId === form.id
-                        ? 'Syncing & Analyzing...'
-                        : 'Sync & Analyze Responses'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void onDeleteExamForm(form.id)}
-                    aria-label={`Remove ${form.title}`}
-                    className="p-2 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Expandable Exam Blueprint & Anti-AI Trap Specification */}
+        {/* Expandable 4-Test Blueprint & Anti-AI Trap Specification */}
         <div className="border-t border-slate-100 pt-4">
           <button
             type="button"
@@ -732,9 +889,8 @@ export function GoogleFormsView({
             className="flex items-center justify-between w-full text-left text-xs font-medium text-slate-700 hover:text-slate-900"
           >
             <span>
-              Inspect Screening Exam Blueprint ({SCREENING_EXAM_QUESTIONS.length}{' '}
-              questions · Duolingo {MIN_DUOLINGO_SCORE}+ &amp; 3 Anti-AI Trick
-              Questions)
+              Inspect All 4 Screening Exam Blueprints (9 questions each ·
+              Duolingo {MIN_DUOLINGO_SCORE}+ &amp; 3 Anti-AI Trick Questions)
             </span>
             {blueprintOpen ? (
               <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -744,31 +900,60 @@ export function GoogleFormsView({
           </button>
 
           {blueprintOpen && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {SCREENING_EXAM_QUESTIONS.map((q, index) => (
-                <div
-                  key={q.key}
-                  className={`p-3.5 rounded-lg border text-xs space-y-1 ${
-                    q.isTrickQuestion
-                      ? 'bg-amber-50/50 border-amber-200'
-                      : 'bg-slate-50/70 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-900">
-                      {index + 1}. {q.title}
-                    </span>
-                    {q.isTrickQuestion && (
-                      <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-                        Anti-AI Trap ({q.trickType})
+            <div className="mt-4 space-y-4">
+              <div
+                role="tablist"
+                aria-label="Select test blueprint to inspect"
+                className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-lg w-fit"
+              >
+                {EXAM_TEST_TYPES.map((t) => {
+                  const spec = getExamTestSpec(t);
+                  const active = blueprintTestType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setBlueprintTestType(t)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                        active
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {spec.number}. {spec.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {activeBlueprintSpec.questions.map((q, index) => (
+                  <div
+                    key={q.key}
+                    className={`p-3.5 rounded-lg border text-xs space-y-1 ${
+                      q.isTrickQuestion
+                        ? 'bg-amber-50/50 border-amber-200'
+                        : 'bg-slate-50/70 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-900">
+                        {index + 1}. {q.title}
                       </span>
-                    )}
+                      {q.isTrickQuestion && (
+                        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                          Anti-AI Trap ({q.trickType})
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-600 leading-relaxed">
+                      {q.description}
+                    </p>
                   </div>
-                  <p className="text-slate-600 leading-relaxed">
-                    {q.description}
-                  </p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -783,9 +968,9 @@ export function GoogleFormsView({
                 Direct Exam Response Analyzer
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Paste or test an applicant&apos;s answers through the exact same
-                Duolingo 100+ gate, trick-question checker, and Gemini AI
-                forensic detector.
+                Evaluate an applicant&apos;s answers for any of the 4 test types
+                through the Duolingo {MIN_DUOLINGO_SCORE}+ gate, test-specific
+                trick checks, and Gemini AI forensic detector.
               </p>
             </div>
             <button
@@ -802,7 +987,26 @@ export function GoogleFormsView({
             onSubmit={(e) => void handleManualAnalyze(e)}
             className="space-y-4"
           >
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Test Type *
+                </label>
+                <select
+                  value={manualTestType}
+                  onChange={(e) =>
+                    setManualTestType(e.target.value as ExamTestType)
+                  }
+                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                >
+                  {EXAM_TEST_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {getExamTestSpec(t).number}.{' '}
+                      {getExamTestSpec(t).shortLabel}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Full Name *
@@ -873,42 +1077,48 @@ export function GoogleFormsView({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  1. Practical Scenario (Missed Deadline)
+                  1.{' '}
+                  {
+                    activeManualSpec.questions.find(
+                      (q) => q.key === 'scenarioResponse'
+                    )?.title
+                  }
                 </label>
                 <textarea
                   rows={3}
                   required
                   value={manualScenario}
                   onChange={(e) => setManualScenario(e.target.value)}
-                  placeholder="Candidate's response on handling a slipping deadline..."
+                  placeholder="Candidate's practical response in their own voice..."
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  2. Precision Trick Check (2 sentences, no cliché words, end with city)
+                  2. Precision Trick Check (2 sentences, no cliché words, end
+                  with city)
                 </label>
                 <textarea
                   rows={3}
                   required
                   value={manualConstraint}
                   onChange={(e) => setManualConstraint(e.target.value)}
-                  placeholder="Candidate's two-sentence bottleneck answer..."
+                  placeholder="Candidate's two-sentence precision response..."
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  3. Scheduling Logic Trap (2 before Meron; Meron is last)
+                  3. Logic Trap ({activeManualSpec.expectedLogicSummary})
                 </label>
                 <input
                   type="text"
                   required
                   value={manualLogic}
                   onChange={(e) => setManualLogic(e.target.value)}
-                  placeholder="e.g., 2 interviews happen before Meron, and Meron is last."
+                  placeholder={`Expected: ${activeManualSpec.expectedLogicSummary}`}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                 />
               </div>
@@ -922,7 +1132,7 @@ export function GoogleFormsView({
                   required
                   value={manualCanary}
                   onChange={(e) => setManualCanary(e.target.value)}
-                  placeholder="Candidate's written follow-ups answer..."
+                  placeholder="Candidate's written assessment answer..."
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                 />
               </div>
@@ -963,7 +1173,8 @@ export function GoogleFormsView({
             <p className="text-xs text-slate-500 mt-0.5">
               Passing requires Duolingo {MIN_DUOLINGO_SCORE}+, passing all 3
               anti-AI trick questions, AI likelihood below 55%, and quality
-              score 60+.
+              score 60+. Results automatically update matching applicant test
+              assignments.
             </p>
           </div>
           <span className="font-mono text-xs tabular-nums text-slate-500">
@@ -973,8 +1184,8 @@ export function GoogleFormsView({
 
         {examSubmissions.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-500">
-            No exam submissions analyzed yet. Sync responses from your Google
-            Form or run a manual check above.
+            No exam submissions analyzed yet. Sync responses from any of the 4
+            Google Forms above or run a manual check.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -982,6 +1193,7 @@ export function GoogleFormsView({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="py-3 px-4">Applicant</th>
+                  <th className="py-3 px-4">Test Track</th>
                   <th className="py-3 px-4">Duolingo</th>
                   <th className="py-3 px-4">Trick Checks</th>
                   <th className="py-3 px-4">AI Risk</th>
@@ -995,6 +1207,7 @@ export function GoogleFormsView({
                   const alreadyInApplicants = applicantEmails.has(
                     sub.applicantEmail.trim().toLowerCase()
                   );
+                  const testSpec = getExamTestSpec(sub.testType);
                   return (
                     <tr key={sub.id} className="align-top hover:bg-slate-50/60">
                       <td className="py-3.5 px-4">
@@ -1017,7 +1230,9 @@ export function GoogleFormsView({
                           className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-800"
                         >
                           <span>
-                            {isExpanded ? 'Hide analysis' : 'View AI & trap report'}
+                            {isExpanded
+                              ? 'Hide analysis'
+                              : 'View AI & trap report'}
                           </span>
                           {isExpanded ? (
                             <ChevronUp className="w-3.5 h-3.5" />
@@ -1061,6 +1276,15 @@ export function GoogleFormsView({
                             )}
                           </div>
                         )}
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="text-xs font-semibold text-slate-800">
+                          Test {testSpec.number}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {testSpec.shortLabel}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
@@ -1170,7 +1394,7 @@ export function GoogleFormsView({
                             <button
                               type="button"
                               onClick={() => void handleAddToPipeline(sub)}
-                              title="Add to Applicants pipeline"
+                              title="Add to Applicants pipeline (auto-assigns 4 tests)"
                               className="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg transition-colors"
                             >
                               <UserPlus className="w-4 h-4" />
@@ -1321,8 +1545,8 @@ export function GoogleFormsView({
         )}
       </section>
 
-      {/* Explicit Confirmation Modal before creating a Google Form via Workspace API */}
-      {confirmCreateOpen && (
+      {/* Explicit Confirmation Modal before creating Google Form(s) via Workspace API */}
+      {confirmCreateTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
           role="dialog"
@@ -1336,17 +1560,19 @@ export function GoogleFormsView({
                   id="confirm-create-form-title"
                   className="font-display text-lg font-semibold text-slate-900"
                 >
-                  Confirm Google Form Creation
+                  {confirmCreateTarget.mode === 'single'
+                    ? 'Confirm Google Form Creation'
+                    : `Create ${confirmCreateTarget.testTypes.length} Google Forms`}
                 </h3>
                 <p className="text-xs text-slate-600 mt-1">
-                  This will create a new form inside your connected Google
-                  account with all {SCREENING_EXAM_QUESTIONS.length} screening
-                  questions.
+                  {confirmCreateTarget.mode === 'single'
+                    ? `This will create "${getExamTestSpec(confirmCreateTarget.testType).label}" in your connected Google account with all 9 screening questions and link it to all assigned applicants.`
+                    : `This will create ${confirmCreateTarget.testTypes.length} screening test forms in your connected Google account and automatically attach their links to all assigned applicants.`}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setConfirmCreateOpen(false)}
+                onClick={() => setConfirmCreateTarget(null)}
                 aria-label="Close modal"
                 className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
               >
@@ -1354,25 +1580,38 @@ export function GoogleFormsView({
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="new-form-title"
-                className="block text-xs font-medium text-slate-700"
-              >
-                Google Form Title
-              </label>
-              <input
-                id="new-form-title"
-                type="text"
-                value={newFormTitle}
-                onChange={(e) => setNewFormTitle(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
-              />
-            </div>
+            {confirmCreateTarget.mode === 'single' ? (
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="new-form-title"
+                  className="block text-xs font-medium text-slate-700"
+                >
+                  Google Form Title
+                </label>
+                <input
+                  id="new-form-title"
+                  type="text"
+                  value={newFormTitle}
+                  onChange={(e) => setNewFormTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                />
+              </div>
+            ) : (
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2 text-xs text-slate-700">
+                <div className="font-semibold text-slate-900">
+                  Forms to be created in Google Forms:
+                </div>
+                <ul className="list-disc pl-4 space-y-1">
+                  {confirmCreateTarget.testTypes.map((t) => (
+                    <li key={t}>{getExamTestSpec(t).defaultFormTitle}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5 text-xs text-slate-600">
               <div className="font-semibold text-slate-800">
-                Included Screening Controls:
+                Included Screening Controls (Per Test):
               </div>
               <ul className="list-disc pl-4 space-y-1">
                 <li>
@@ -1380,13 +1619,13 @@ export function GoogleFormsView({
                   {MIN_DUOLINGO_SCORE} required) + certificate verification link
                 </li>
                 <li>
-                  Practical workplace scenario written in the applicant&apos;s
-                  own voice
+                  Track-specific practical scenario written in the
+                  applicant&apos;s own voice
                 </li>
                 <li>
                   3 anti-AI trick questions (strict sentence/cliché/city
-                  constraint, scheduling logic trap, and hidden prompt-injection
-                  canary phrase)
+                  constraint, track-specific logic trap, and unique
+                  prompt-injection canary phrase)
                 </li>
               </ul>
             </div>
@@ -1395,22 +1634,28 @@ export function GoogleFormsView({
               <button
                 type="button"
                 disabled={creatingForm}
-                onClick={() => setConfirmCreateOpen(false)}
+                onClick={() => setConfirmCreateTarget(null)}
                 className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={creatingForm || !newFormTitle.trim()}
-                onClick={() => void handleConfirmedCreateForm()}
+                disabled={
+                  creatingForm ||
+                  (confirmCreateTarget.mode === 'single' &&
+                    !newFormTitle.trim())
+                }
+                onClick={() => void handleConfirmedCreateForms()}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-xs font-medium rounded-lg transition-colors"
               >
                 <FilePlus2 className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>
                   {creatingForm
                     ? 'Creating in Google Forms...'
-                    : 'Confirm & Create Form'}
+                    : confirmCreateTarget.mode === 'single'
+                      ? 'Confirm & Create Form'
+                      : `Confirm & Create ${confirmCreateTarget.testTypes.length} Forms`}
                 </span>
               </button>
             </div>

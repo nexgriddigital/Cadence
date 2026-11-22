@@ -29,17 +29,20 @@ import type {
   Applicant,
   ApplicantInvite,
   ApplicantStage,
+  ApplicantTestAssignment,
   CommissionModel,
   CommissionRuleSet,
   ExamFormQuestionMap,
   ExamFormRecord,
   ExamSubmissionRecord,
+  ExamTestType,
   InviteCodeStatus,
   PaymentMethodType,
   PayoutRecord,
   PayoutStatus,
   PerformanceTarget,
   Recruit,
+  TestAssignmentStatus,
 } from '../types/payroll';
 import {
   calculatePayoutBreakdown,
@@ -47,7 +50,13 @@ import {
   getPriorCumulativePay,
   resolvePayoutCommissionMultiplier,
 } from '../utils/commissionEngine';
-import { generateInviteCode, MIN_DUOLINGO_SCORE } from '../utils/examBlueprint';
+import {
+  EXAM_TEST_TYPES,
+  generateInviteCode,
+  getExamTestSpec,
+  isValidExamTestType,
+  MIN_DUOLINGO_SCORE,
+} from '../utils/examBlueprint';
 
 export interface NewPayoutInput {
   recruitId: string;
@@ -97,6 +106,7 @@ export interface ApplicantInput {
 
 export interface SaveExamFormInput extends ExamFormQuestionMap {
   googleFormId: string;
+  testType: ExamTestType;
   title: string;
   responderUri: string;
   editUrl: string;
@@ -104,6 +114,7 @@ export interface SaveExamFormInput extends ExamFormQuestionMap {
 
 export interface SaveExamSubmissionInput {
   googleFormId: string;
+  testType: ExamTestType;
   responseId: string;
   applicantName: string;
   applicantEmail: string;
@@ -140,6 +151,9 @@ export function usePayrollStore() {
   const [examSubmissions, setExamSubmissions] = useState<
     ExamSubmissionRecord[]
   >([]);
+  const [applicantTests, setApplicantTests] = useState<
+    ApplicantTestAssignment[]
+  >([]);
   const [applicantInvites, setApplicantInvites] = useState<ApplicantInvite[]>(
     []
   );
@@ -157,6 +171,7 @@ export function usePayrollStore() {
       setPerformanceTargets([]);
       setExamForms([]);
       setExamSubmissions([]);
+      setApplicantTests([]);
       setApplicantInvites([]);
       setLoading(false);
       setSyncError(null);
@@ -171,6 +186,7 @@ export function usePayrollStore() {
     let unsubTargets: (() => void) | undefined;
     let unsubExamForms: (() => void) | undefined;
     let unsubExamSubmissions: (() => void) | undefined;
+    let unsubApplicantTests: (() => void) | undefined;
     let unsubInvites: (() => void) | undefined;
 
     const uid = user.uid;
@@ -193,6 +209,7 @@ export function usePayrollStore() {
       uid,
       'examSubmissions'
     );
+    const applicantTestsColRef = collection(db, 'users', uid, 'applicantTests');
     const invitesColRef = collection(db, 'applicantInvites');
 
     async function bootstrapAndSubscribe() {
@@ -500,9 +517,13 @@ export function usePayrollStore() {
         (snapshot) => {
           const next: ExamFormRecord[] = snapshot.docs.map((docSnap) => {
             const d = docSnap.data();
+            const testType: ExamTestType = isValidExamTestType(d.testType)
+              ? d.testType
+              : 'english_comm';
             return {
               id: docSnap.id,
               googleFormId: String(d.googleFormId ?? ''),
+              testType,
               title: String(d.title ?? ''),
               responderUri: String(d.responderUri ?? ''),
               editUrl: String(d.editUrl ?? ''),
@@ -535,9 +556,13 @@ export function usePayrollStore() {
           const next: ExamSubmissionRecord[] = snapshot.docs
             .map((docSnap) => {
               const d = docSnap.data();
+              const testType: ExamTestType = isValidExamTestType(d.testType)
+                ? d.testType
+                : 'english_comm';
               return {
                 id: docSnap.id,
                 googleFormId: String(d.googleFormId ?? ''),
+                testType,
                 responseId: String(d.responseId ?? ''),
                 applicantName: String(d.applicantName ?? ''),
                 applicantEmail: String(d.applicantEmail ?? ''),
@@ -569,6 +594,55 @@ export function usePayrollStore() {
             error,
             OperationType.LIST,
             `users/${uid}/examSubmissions`
+          );
+        }
+      );
+
+      unsubApplicantTests = onSnapshot(
+        query(applicantTestsColRef, where('ownerId', '==', uid)),
+        (snapshot) => {
+          const validStatuses: TestAssignmentStatus[] = [
+            'Assigned',
+            'Passed',
+            'Failed',
+          ];
+          const next: ApplicantTestAssignment[] = snapshot.docs.map((docSnap) => {
+            const d = docSnap.data();
+            const testType: ExamTestType = isValidExamTestType(d.testType)
+              ? d.testType
+              : 'english_comm';
+            const status = validStatuses.includes(d.status as TestAssignmentStatus)
+              ? (d.status as TestAssignmentStatus)
+              : 'Assigned';
+            return {
+              id: docSnap.id,
+              applicantId: String(d.applicantId ?? ''),
+              applicantName: String(d.applicantName ?? ''),
+              applicantEmail: String(d.applicantEmail ?? ''),
+              testType,
+              googleFormId: String(d.googleFormId ?? ''),
+              formTitle: String(d.formTitle ?? getExamTestSpec(testType).label),
+              responderUri: String(d.responderUri ?? ''),
+              status,
+              submissionId:
+                typeof d.submissionId === 'string' && d.submissionId.length > 0
+                  ? d.submissionId
+                  : null,
+              duolingoScore: Number(d.duolingoScore ?? 0),
+              aiLikelihoodPct: Number(d.aiLikelihoodPct ?? 0),
+              qualityScore: Number(d.qualityScore ?? 0),
+              assignedAt: String(d.assignedAt ?? ''),
+              completedAt: String(d.completedAt ?? ''),
+            };
+          });
+          setApplicantTests(next);
+        },
+        (error) => {
+          setSyncError('Unable to sync applicant test assignments.');
+          handleFirestoreError(
+            error,
+            OperationType.LIST,
+            `users/${uid}/applicantTests`
           );
         }
       );
@@ -618,6 +692,7 @@ export function usePayrollStore() {
       unsubTargets?.();
       unsubExamForms?.();
       unsubExamSubmissions?.();
+      unsubApplicantTests?.();
       unsubInvites?.();
     };
   }, [authReady, user, applicantProfile]);
@@ -917,6 +992,7 @@ export function usePayrollStore() {
       if (!user) return null;
       const newId = `app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const path = `users/${user.uid}/applicants/${newId}`;
+      const assignedAt = new Date().toISOString();
 
       const payload: Omit<Applicant, 'id'> = {
         name: clampText(input.name, 120),
@@ -932,19 +1008,123 @@ export function usePayrollStore() {
         convertedRecruitId: input.convertedRecruitId ?? null,
       };
 
+      const formsByType = new Map(examForms.map((f) => [f.testType, f]));
+      const normalizedEmail = payload.email.toLowerCase();
+
       try {
-        await setDoc(doc(db, 'users', user.uid, 'applicants', newId), {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid, 'applicants', newId), {
           ownerId: user.uid,
           ...payload,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+
+        // Automatically assign all 4 Google Forms screening tests to every new applicant
+        for (const testType of EXAM_TEST_TYPES) {
+          const spec = getExamTestSpec(testType);
+          const connectedForm = formsByType.get(testType);
+          const existingSubmission = examSubmissions.find(
+            (s) =>
+              s.testType === testType &&
+              s.applicantEmail.trim().toLowerCase() === normalizedEmail
+          );
+          const assignmentId = `${newId}_${testType}`;
+          const assignmentStatus: TestAssignmentStatus = existingSubmission
+            ? existingSubmission.passed
+              ? 'Passed'
+              : 'Failed'
+            : 'Assigned';
+
+          batch.set(doc(db, 'users', user.uid, 'applicantTests', assignmentId), {
+            ownerId: user.uid,
+            applicantId: newId,
+            applicantName: payload.name,
+            applicantEmail: payload.email,
+            testType,
+            googleFormId: connectedForm?.googleFormId ?? '',
+            formTitle: clampText(connectedForm?.title || spec.label, 160),
+            responderUri: connectedForm?.responderUri ?? '',
+            status: assignmentStatus,
+            submissionId: existingSubmission?.id ?? null,
+            duolingoScore: existingSubmission?.duolingoScore ?? 0,
+            aiLikelihoodPct: existingSubmission?.aiLikelihoodPct ?? 0,
+            qualityScore: existingSubmission?.qualityScore ?? 0,
+            assignedAt,
+            completedAt: existingSubmission?.submittedAt ?? '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        await batch.commit();
         return { id: newId, ...payload };
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, path);
       }
     },
-    [user]
+    [user, examForms, examSubmissions]
+  );
+
+  const assignMissingTestsForApplicant = useCallback(
+    async (applicant: Applicant) => {
+      if (!user) return;
+      const existingTypes = new Set(
+        applicantTests
+          .filter((t) => t.applicantId === applicant.id)
+          .map((t) => t.testType)
+      );
+      const missingTypes = EXAM_TEST_TYPES.filter((t) => !existingTypes.has(t));
+      if (missingTypes.length === 0) return;
+
+      const assignedAt = new Date().toISOString();
+      const formsByType = new Map(examForms.map((f) => [f.testType, f]));
+      const normalizedEmail = applicant.email.trim().toLowerCase();
+      const path = `users/${user.uid}/applicantTests`;
+
+      try {
+        const batch = writeBatch(db);
+        for (const testType of missingTypes) {
+          const spec = getExamTestSpec(testType);
+          const connectedForm = formsByType.get(testType);
+          const existingSubmission = examSubmissions.find(
+            (s) =>
+              s.testType === testType &&
+              s.applicantEmail.trim().toLowerCase() === normalizedEmail
+          );
+          const assignmentId = `${applicant.id}_${testType}`;
+          const assignmentStatus: TestAssignmentStatus = existingSubmission
+            ? existingSubmission.passed
+              ? 'Passed'
+              : 'Failed'
+            : 'Assigned';
+
+          batch.set(doc(db, 'users', user.uid, 'applicantTests', assignmentId), {
+            ownerId: user.uid,
+            applicantId: applicant.id,
+            applicantName: clampText(applicant.name, 120),
+            applicantEmail: clampText(applicant.email, 160),
+            testType,
+            googleFormId: connectedForm?.googleFormId ?? '',
+            formTitle: clampText(connectedForm?.title || spec.label, 160),
+            responderUri: connectedForm?.responderUri ?? '',
+            status: assignmentStatus,
+            submissionId: existingSubmission?.id ?? null,
+            duolingoScore: existingSubmission?.duolingoScore ?? 0,
+            aiLikelihoodPct: existingSubmission?.aiLikelihoodPct ?? 0,
+            qualityScore: existingSubmission?.qualityScore ?? 0,
+            assignedAt,
+            completedAt: existingSubmission?.submittedAt ?? '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, path);
+      }
+    },
+    [user, applicantTests, examForms, examSubmissions]
   );
 
   const updateApplicant = useCallback(
@@ -973,16 +1153,45 @@ export function usePayrollStore() {
       if (input.convertedRecruitId !== undefined)
         sanitized.convertedRecruitId = input.convertedRecruitId;
 
+      const relatedTests =
+        input.name !== undefined || input.email !== undefined
+          ? applicantTests.filter((t) => t.applicantId === applicantId)
+          : [];
+
       try {
-        await updateDoc(
-          doc(db, 'users', user.uid, 'applicants', applicantId),
-          sanitized
-        );
+        if (relatedTests.length > 0) {
+          const batch = writeBatch(db);
+          batch.update(
+            doc(db, 'users', user.uid, 'applicants', applicantId),
+            sanitized
+          );
+          for (const test of relatedTests) {
+            const testPatch: Record<string, unknown> = {
+              updatedAt: serverTimestamp(),
+            };
+            if (input.name !== undefined) {
+              testPatch.applicantName = clampText(input.name, 120);
+            }
+            if (input.email !== undefined) {
+              testPatch.applicantEmail = clampText(input.email, 160);
+            }
+            batch.update(
+              doc(db, 'users', user.uid, 'applicantTests', test.id),
+              testPatch
+            );
+          }
+          await batch.commit();
+        } else {
+          await updateDoc(
+            doc(db, 'users', user.uid, 'applicants', applicantId),
+            sanitized
+          );
+        }
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, path);
       }
     },
-    [user]
+    [user, applicantTests]
   );
 
   const updateApplicantStage = useCallback(
@@ -996,27 +1205,40 @@ export function usePayrollStore() {
     async (applicantId: string) => {
       if (!user) return;
       const path = `users/${user.uid}/applicants/${applicantId}`;
+      const relatedTests = applicantTests.filter(
+        (t) => t.applicantId === applicantId
+      );
       try {
-        await deleteDoc(doc(db, 'users', user.uid, 'applicants', applicantId));
+        const batch = writeBatch(db);
+        for (const t of relatedTests) {
+          batch.delete(doc(db, 'users', user.uid, 'applicantTests', t.id));
+        }
+        batch.delete(doc(db, 'users', user.uid, 'applicants', applicantId));
+        await batch.commit();
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, path);
       }
     },
-    [user]
+    [user, applicantTests]
   );
 
   const saveExamForm = useCallback(
     async (input: SaveExamFormInput): Promise<ExamFormRecord | null> => {
       if (!user) return null;
-      const existing = examForms.find(
+      const existingByGoogleId = examForms.find(
         (f) => f.googleFormId === input.googleFormId
       );
+      const replacedFormsOfSameType = examForms.filter(
+        (f) =>
+          f.testType === input.testType && f.googleFormId !== input.googleFormId
+      );
       const docId =
-        existing?.id ??
+        existingByGoogleId?.id ??
         `form-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const path = `users/${user.uid}/examForms/${docId}`;
       const payload = {
         googleFormId: clampText(input.googleFormId, 160),
+        testType: input.testType,
         title: clampText(input.title, 160),
         responderUri: clampText(input.responderUri, 500),
         editUrl: clampText(input.editUrl, 500),
@@ -1031,9 +1253,19 @@ export function usePayrollStore() {
         qTrickCanary: clampText(input.qTrickCanary, 120),
       };
 
+      const testsToBackfill = applicantTests.filter(
+        (t) => t.testType === input.testType
+      );
+
       try {
-        if (existing) {
-          await updateDoc(doc(db, 'users', user.uid, 'examForms', docId), {
+        const batch = writeBatch(db);
+        for (const oldForm of replacedFormsOfSameType) {
+          batch.delete(doc(db, 'users', user.uid, 'examForms', oldForm.id));
+        }
+
+        if (existingByGoogleId) {
+          batch.update(doc(db, 'users', user.uid, 'examForms', docId), {
+            testType: payload.testType,
             title: payload.title,
             responderUri: payload.responderUri,
             editUrl: payload.editUrl,
@@ -1049,36 +1281,67 @@ export function usePayrollStore() {
             updatedAt: serverTimestamp(),
           });
         } else {
-          await setDoc(doc(db, 'users', user.uid, 'examForms', docId), {
+          batch.set(doc(db, 'users', user.uid, 'examForms', docId), {
             ownerId: user.uid,
             ...payload,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
         }
+
+        // Automatically attach the live Google Form URL to all existing applicant test assignments for this testType
+        for (const test of testsToBackfill) {
+          batch.update(doc(db, 'users', user.uid, 'applicantTests', test.id), {
+            googleFormId: payload.googleFormId,
+            formTitle: payload.title,
+            responderUri: payload.responderUri,
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        await batch.commit();
         return { id: docId, ...payload };
       } catch (error) {
         handleFirestoreError(
           error,
-          existing ? OperationType.UPDATE : OperationType.CREATE,
+          existingByGoogleId ? OperationType.UPDATE : OperationType.CREATE,
           path
         );
       }
     },
-    [user, examForms]
+    [user, examForms, applicantTests]
   );
 
   const deleteExamForm = useCallback(
     async (formDocId: string) => {
       if (!user) return;
       const path = `users/${user.uid}/examForms/${formDocId}`;
+      const targetForm = examForms.find((f) => f.id === formDocId);
+      const linkedTests = targetForm
+        ? applicantTests.filter(
+            (t) => t.googleFormId === targetForm.googleFormId
+          )
+        : [];
       try {
-        await deleteDoc(doc(db, 'users', user.uid, 'examForms', formDocId));
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'users', user.uid, 'examForms', formDocId));
+        if (targetForm) {
+          const fallbackTitle = getExamTestSpec(targetForm.testType).label;
+          for (const t of linkedTests) {
+            batch.update(doc(db, 'users', user.uid, 'applicantTests', t.id), {
+              googleFormId: '',
+              formTitle: fallbackTitle,
+              responderUri: '',
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+        await batch.commit();
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, path);
       }
     },
-    [user]
+    [user, examForms, applicantTests]
   );
 
   const saveExamSubmission = useCallback(
@@ -1091,6 +1354,7 @@ export function usePayrollStore() {
 
       const payload: Omit<ExamSubmissionRecord, 'id'> = {
         googleFormId: clampText(input.googleFormId, 160),
+        testType: input.testType,
         responseId: clampText(input.responseId, 160),
         applicantName: clampText(input.applicantName, 120) || 'Unnamed Applicant',
         applicantEmail: clampText(input.applicantEmail.toLowerCase(), 160),
@@ -1113,19 +1377,43 @@ export function usePayrollStore() {
         submittedAt: clampText(input.submittedAt, 64),
       };
 
+      const matchingAssignments = applicantTests.filter(
+        (t) =>
+          t.testType === payload.testType &&
+          t.applicantEmail.trim().toLowerCase() === payload.applicantEmail
+      );
+
       try {
-        await setDoc(doc(db, 'users', user.uid, 'examSubmissions', newId), {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid, 'examSubmissions', newId), {
           ownerId: user.uid,
           ...payload,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+
+        for (const assignment of matchingAssignments) {
+          batch.update(
+            doc(db, 'users', user.uid, 'applicantTests', assignment.id),
+            {
+              status: payload.passed ? 'Passed' : 'Failed',
+              submissionId: newId,
+              duolingoScore: payload.duolingoScore,
+              aiLikelihoodPct: payload.aiLikelihoodPct,
+              qualityScore: payload.qualityScore,
+              completedAt: payload.submittedAt,
+              updatedAt: serverTimestamp(),
+            }
+          );
+        }
+
+        await batch.commit();
         return { id: newId, ...payload };
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, path);
       }
     },
-    [user]
+    [user, applicantTests]
   );
 
   const deleteExamSubmission = useCallback(
@@ -1231,6 +1519,7 @@ export function usePayrollStore() {
     performanceTargets,
     examForms,
     examSubmissions,
+    applicantTests,
     applicantInvites,
     loading,
     syncError,
@@ -1244,6 +1533,7 @@ export function usePayrollStore() {
     updateRecruit,
     deleteRecruit,
     addApplicant,
+    assignMissingTestsForApplicant,
     updateApplicant,
     updateApplicantStage,
     deleteApplicant,

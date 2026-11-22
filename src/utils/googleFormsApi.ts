@@ -1,8 +1,8 @@
 import {
   MIN_DUOLINGO_SCORE,
-  SCREENING_EXAM_QUESTIONS,
+  getExamTestSpec,
 } from './examBlueprint';
-import type { ExamFormQuestionMap } from '../types/payroll';
+import type { ExamFormQuestionMap, ExamTestType } from '../types/payroll';
 
 const FORMS_API_BASE = 'https://forms.googleapis.com/v1/forms';
 
@@ -57,6 +57,7 @@ export interface ParsedFormCandidateResponse {
 }
 
 export interface ExamAnalysisResult {
+  testType: ExamTestType;
   duolingoScore: number;
   duolingoPassed: boolean;
   canaryTriggered: boolean;
@@ -135,19 +136,53 @@ export function buildQuestionMapFromItems(
       map.qFullName = qId;
     } else if (!map.qEmail && title.includes('email')) {
       map.qEmail = qId;
-    } else if (!map.qTargetRole && (title.includes('target role') || title.includes('position'))) {
+    } else if (
+      !map.qTargetRole &&
+      (title.includes('target role') || title.includes('position'))
+    ) {
       map.qTargetRole = qId;
-    } else if (!map.qDuolingoScore && title.includes('duolingo') && title.includes('score')) {
+    } else if (
+      !map.qDuolingoScore &&
+      title.includes('duolingo') &&
+      title.includes('score')
+    ) {
       map.qDuolingoScore = qId;
-    } else if (!map.qDuolingoProof && title.includes('duolingo') && (title.includes('certificate') || title.includes('link') || title.includes('proof'))) {
+    } else if (
+      !map.qDuolingoProof &&
+      title.includes('duolingo') &&
+      (title.includes('certificate') ||
+        title.includes('link') ||
+        title.includes('proof'))
+    ) {
       map.qDuolingoProof = qId;
-    } else if (!map.qScenario && (title.includes('scenario') || title.includes('deadline'))) {
+    } else if (
+      !map.qScenario &&
+      (title.includes('scenario') ||
+        title.includes('deadline') ||
+        title.includes('discrepancy') ||
+        title.includes('workflow') ||
+        title.includes('stakeholder'))
+    ) {
       map.qScenario = qId;
-    } else if (!map.qTrickConstraint && (title.includes('precision') || title.includes('constraint'))) {
+    } else if (
+      !map.qTrickConstraint &&
+      (title.includes('precision') || title.includes('constraint'))
+    ) {
       map.qTrickConstraint = qId;
-    } else if (!map.qTrickLogic && (title.includes('scheduling') || title.includes('reasoning'))) {
+    } else if (
+      !map.qTrickLogic &&
+      (title.includes('reasoning') ||
+        title.includes('scheduling') ||
+        title.includes('sequencing') ||
+        title.includes('pipeline') ||
+        title.includes('schedule'))
+    ) {
       map.qTrickLogic = qId;
-    } else if (!map.qTrickCanary && (title.includes('written communication') || title.includes('communication'))) {
+    } else if (
+      !map.qTrickCanary &&
+      (title.includes('written communication') ||
+        title.includes('communication'))
+    ) {
       map.qTrickCanary = qId;
     }
   }
@@ -157,17 +192,19 @@ export function buildQuestionMapFromItems(
 
 export async function createScreeningExamForm(
   accessToken: string,
-  title: string
+  testType: ExamTestType,
+  title?: string
 ): Promise<{
   googleFormId: string;
+  testType: ExamTestType;
   title: string;
   responderUri: string;
   editUrl: string;
   questionMap: ExamFormQuestionMap;
 }> {
-  const cleanTitle = title.trim() || 'Cadence Applicant Screening Exam';
+  const spec = getExamTestSpec(testType);
+  const cleanTitle = (title ?? '').trim() || spec.defaultFormTitle;
 
-  // Step 1: Create the form shell (Forms API v1 only accepts info.title/documentTitle on create)
   const createRes = await fetch(FORMS_API_BASE, {
     method: 'POST',
     headers: {
@@ -192,17 +229,16 @@ export async function createScreeningExamForm(
     throw new Error('Google Forms API did not return a formId.');
   }
 
-  // Step 2: Populate description and all 9 screening questions via :batchUpdate
   const requests: Array<Record<string, unknown>> = [
     {
       updateFormInfo: {
         info: {
-          description: `Official Cadence Applicant Screening Exam.\n\nRequirements:\n• Minimum Duolingo English Test score of ${MIN_DUOLINGO_SCORE} (10–160 scale) with verifiable certificate link or ID.\n• All written answers must be authored solely by you without AI assistance.\n• Passing candidates will receive a unique Cadence registration code to create their applicant account.`,
+          description: `${spec.label} — Official Cadence Applicant Assessment.\n\n${spec.summary}\n\nRequirements:\n• Minimum Duolingo English Test score of ${MIN_DUOLINGO_SCORE} (10–160 scale) with verifiable certificate link or ID.\n• All written answers must be authored solely by you without AI assistance.\n• Passing candidates will receive a unique Cadence registration code to create their applicant account.`,
         },
         updateMask: 'description',
       },
     },
-    ...SCREENING_EXAM_QUESTIONS.map((q, index) => ({
+    ...spec.questions.map((q, index) => ({
       createItem: {
         item: {
           title: q.title,
@@ -252,6 +288,7 @@ export async function createScreeningExamForm(
 
   return {
     googleFormId,
+    testType,
     title: updatedForm.info?.title || cleanTitle,
     responderUri,
     editUrl,
@@ -360,6 +397,7 @@ export function parseGoogleFormResponses(
 }
 
 export async function analyzeExamSubmission(payload: {
+  testType: ExamTestType;
   applicantName: string;
   applicantEmail: string;
   targetRole: string;
@@ -386,6 +424,7 @@ export async function analyzeExamSubmission(payload: {
   }
 
   return {
+    testType: payload.testType,
     duolingoScore: Number(data.duolingoScore ?? 0),
     duolingoPassed: Boolean(data.duolingoPassed),
     canaryTriggered: Boolean(data.canaryTriggered),

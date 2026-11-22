@@ -419,6 +419,10 @@
           "minLength": 1,
           "maxLength": 160
         },
+        "testType": {
+          "type": "string",
+          "enum": ["english_comm", "analytical_logic", "technical_ops", "role_scenario"]
+        },
         "title": {
           "type": "string",
           "minLength": 1,
@@ -449,6 +453,7 @@
       "required": [
         "ownerId",
         "googleFormId",
+        "testType",
         "title",
         "responderUri",
         "editUrl",
@@ -477,6 +482,10 @@
           "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "googleFormId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "testType": {
+          "type": "string",
+          "enum": ["english_comm", "analytical_logic", "technical_ops", "role_scenario"]
+        },
         "responseId": { "type": "string", "minLength": 1, "maxLength": 160 },
         "applicantName": { "type": "string", "minLength": 1, "maxLength": 120 },
         "applicantEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
@@ -503,6 +512,7 @@
       "required": [
         "ownerId",
         "googleFormId",
+        "testType",
         "responseId",
         "applicantName",
         "applicantEmail",
@@ -520,6 +530,69 @@
         "summary",
         "inviteCode",
         "submittedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ApplicantTestAssignment": {
+      "title": "ApplicantTestAssignment",
+      "description": "Automatic assignment linking an applicant to one of the 4 Google Forms screening tests and tracking completion status.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "applicantId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "applicantName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "applicantEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "testType": {
+          "type": "string",
+          "enum": ["english_comm", "analytical_logic", "technical_ops", "role_scenario"]
+        },
+        "googleFormId": { "type": "string", "maxLength": 160 },
+        "formTitle": { "type": "string", "maxLength": 160 },
+        "responderUri": { "type": "string", "maxLength": 500 },
+        "status": {
+          "type": "string",
+          "enum": ["Assigned", "Passed", "Failed"]
+        },
+        "submissionId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "duolingoScore": { "type": "number" },
+        "aiLikelihoodPct": { "type": "number" },
+        "qualityScore": { "type": "number" },
+        "assignedAt": { "type": "string", "maxLength": 64 },
+        "completedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "applicantId",
+        "applicantName",
+        "applicantEmail",
+        "testType",
+        "googleFormId",
+        "formTitle",
+        "responderUri",
+        "status",
+        "submissionId",
+        "duolingoScore",
+        "aiLikelihoodPct",
+        "qualityScore",
+        "assignedAt",
+        "completedAt",
         "createdAt",
         "updatedAt"
       ]
@@ -654,6 +727,10 @@
     "/users/{userId}/examSubmissions/{submissionId}": {
       "schema": { "$ref": "#/entities/ExamSubmission" },
       "description": "Analyzed screening exam submissions with Duolingo verification and AI detection results."
+    },
+    "/users/{userId}/applicantTests/{assignmentId}": {
+      "schema": { "$ref": "#/entities/ApplicantTestAssignment" },
+      "description": "Per-applicant automatic assignments across all 4 Google Forms screening tests."
     },
     "/applicantInvites/{code}": {
       "schema": { "$ref": "#/entities/ApplicantInvite" },

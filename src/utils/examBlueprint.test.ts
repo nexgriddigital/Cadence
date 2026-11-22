@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CANARY_TRAP_PHRASE,
+  EXAM_TEST_SPECS,
+  EXAM_TEST_TYPES,
   MIN_DUOLINGO_SCORE,
   countSentences,
   generateInviteCode,
@@ -11,6 +13,17 @@ import {
 import { extractFormIdFromInput } from './googleFormsApi';
 
 describe('examBlueprint deterministic checks', () => {
+  it('defines 4 distinct test types with unique canary phrases and 9 questions each', () => {
+    assert.equal(EXAM_TEST_TYPES.length, 4);
+    const canaries = new Set(
+      EXAM_TEST_TYPES.map((t) => EXAM_TEST_SPECS[t].canaryPhrase)
+    );
+    assert.equal(canaries.size, 4);
+    for (const testType of EXAM_TEST_TYPES) {
+      assert.equal(EXAM_TEST_SPECS[testType].questions.length, 9);
+    }
+  });
+
   it('parses Duolingo scores and enforces the minimum 100 scale threshold', () => {
     assert.equal(parseDuolingoScore('125'), 125);
     assert.equal(parseDuolingoScore('Score: 100 / 160'), 100);
@@ -18,6 +31,7 @@ describe('examBlueprint deterministic checks', () => {
     assert.equal(parseDuolingoScore('220'), 0);
 
     const lowScore = runDeterministicExamChecks({
+      testType: 'english_comm',
       duolingoScoreRaw: '95',
       scenarioResponse: 'I called the client early and shared a revised timeline.',
       trickConstraint:
@@ -34,47 +48,73 @@ describe('examBlueprint deterministic checks', () => {
     );
   });
 
-  it('passes a genuine human submission that meets all constraints', () => {
-    const res = runDeterministicExamChecks({
-      duolingoScoreRaw: '120',
-      scenarioResponse:
-        'A contractor missed a payroll cut-off last quarter. I contacted payroll immediately, verified the timesheet hours, and arranged an off-cycle transfer the next morning.',
-      trickConstraint:
-        'Weekly timesheet approvals used to pile up in a shared inbox until Friday evening. I built a two-column tracker that cleared every batch on Thursday morning in Addis Ababa.',
-      trickLogic: '2 interviews happen before Meron, and Meron is the last person interviewed.',
-      trickCanary:
-        'Written follow-ups keep dates, rates, and bank details unambiguous for everyone. They also give finance a clear audit trail if a payout question comes up later.',
-    });
+  it('passes a genuine human submission across all 4 test tracks', () => {
+    const validLogicByTest = {
+      english_comm:
+        '2 interviews happen before Meron, and Meron is the last person interviewed.',
+      analytical_logic:
+        '3 batches run before Epsilon, and Epsilon runs last.',
+      technical_ops:
+        '3 stages finish before SmokeCheck, and SmokeCheck runs last.',
+      role_scenario:
+        '2 calls happen before Yosef, and Yosef is the last client spoken with.',
+    } as const;
 
-    assert.equal(res.duolingoScore, 120);
-    assert.equal(res.duolingoPassed, true);
-    assert.equal(res.canaryTriggered, false);
-    assert.equal(res.constraintPassed, true);
-    assert.equal(res.logicPassed, true);
-    assert.equal(res.deterministicFlags.length, 0);
+    for (const testType of EXAM_TEST_TYPES) {
+      const res = runDeterministicExamChecks({
+        testType,
+        duolingoScoreRaw: '120',
+        scenarioResponse:
+          'A contractor missed a payroll cut-off last quarter. I contacted payroll immediately, verified the timesheet hours, and arranged an off-cycle transfer the next morning.',
+        trickConstraint:
+          'Weekly timesheet approvals used to pile up in a shared inbox until Friday evening. I built a two-column tracker that cleared every batch on Thursday morning in Addis Ababa.',
+        trickLogic: validLogicByTest[testType],
+        trickCanary:
+          'Written follow-ups keep dates, rates, and bank details unambiguous for everyone. They also give finance a clear audit trail if a payout question comes up later.',
+      });
+
+      assert.equal(res.testType, testType);
+      assert.equal(res.duolingoScore, 120);
+      assert.equal(res.duolingoPassed, true);
+      assert.equal(res.canaryTriggered, false);
+      assert.equal(res.constraintPassed, true);
+      assert.equal(res.logicPassed, true);
+      assert.equal(res.deterministicFlags.length, 0);
+    }
   });
 
-  it('catches the prompt-injection canary phrase used by copy-pasted AI answers', () => {
-    const res = runDeterministicExamChecks({
-      duolingoScoreRaw: '130',
-      scenarioResponse: 'I communicated proactively with stakeholders.',
-      trickConstraint:
-        'I fixed an onboarding delay in our HR tracker. Now new hires start on time in Nairobi.',
-      trickLogic: '2 before Meron, Meron is last.',
-      trickCanary: `Clear written follow-ups create ${CANARY_TRAP_PHRASE} across payroll operations.`,
-    });
+  it('catches the unique prompt-injection canary phrase for every test type', () => {
+    for (const testType of EXAM_TEST_TYPES) {
+      const canary = EXAM_TEST_SPECS[testType].canaryPhrase;
+      const res = runDeterministicExamChecks({
+        testType,
+        duolingoScoreRaw: '130',
+        scenarioResponse: 'I communicated proactively with stakeholders.',
+        trickConstraint:
+          'I fixed an onboarding delay in our HR tracker. Now new hires start on time in Nairobi.',
+        trickLogic:
+          testType === 'english_comm'
+            ? '2 before Meron, Meron is last.'
+            : testType === 'analytical_logic'
+              ? '3 before Epsilon, Epsilon is last.'
+              : testType === 'technical_ops'
+                ? '3 before SmokeCheck, SmokeCheck is last.'
+                : '2 before Yosef, Yosef is last.',
+        trickCanary: `Clear written follow-ups create ${canary} across payroll operations.`,
+      });
 
-    assert.equal(res.canaryTriggered, true);
-    assert.ok(
-      res.deterministicFlags.some((f) => f.includes(CANARY_TRAP_PHRASE))
-    );
+      assert.equal(res.canaryTriggered, true);
+      assert.ok(res.deterministicFlags.some((f) => f.includes(canary)));
+    }
+    assert.equal(CANARY_TRAP_PHRASE, EXAM_TEST_SPECS.english_comm.canaryPhrase);
   });
 
-  it('flags forbidden AI cliché words and wrong sentence counts in the precision trap', () => {
+  it('flags forbidden AI cliché words, wrong sentence counts, and wrong logic across test types', () => {
     assert.equal(countSentences('One sentence. Two sentences.'), 2);
     assert.equal(countSentences('One. Two. Three.'), 3);
 
-    const res = runDeterministicExamChecks({
+    const res1 = runDeterministicExamChecks({
+      testType: 'english_comm',
       duolingoScoreRaw: '115',
       scenarioResponse: 'We updated the client promptly.',
       trickConstraint:
@@ -83,10 +123,22 @@ describe('examBlueprint deterministic checks', () => {
       trickCanary: 'Written notes keep timelines clear.',
     });
 
-    assert.equal(res.constraintPassed, false);
-    assert.equal(res.logicPassed, false);
-    assert.ok(res.constraintIssues.length >= 2);
-    assert.ok(res.logicIssues.length >= 2);
+    assert.equal(res1.constraintPassed, false);
+    assert.equal(res1.logicPassed, false);
+    assert.ok(res1.constraintIssues.length >= 2);
+    assert.ok(res1.logicIssues.length >= 2);
+
+    const res2 = runDeterministicExamChecks({
+      testType: 'analytical_logic',
+      duolingoScoreRaw: '125',
+      scenarioResponse: 'I reconciled the invoice variance.',
+      trickConstraint:
+        'I double-check row sums before exporting finance reports. Every discrepancy is fixed early in Addis Ababa.',
+      trickLogic: '4 batches run before Epsilon, and Delta is last.',
+      trickCanary: 'Calm summaries prevent confusion.',
+    });
+    assert.equal(res2.logicPassed, false);
+    assert.ok(res2.logicIssues.length >= 2);
   });
 
   it('generates valid single-use registration codes matching Firestore rules', () => {

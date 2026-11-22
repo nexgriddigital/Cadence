@@ -28,6 +28,14 @@ export type ApplicantStage =
 
 export type InviteCodeStatus = 'Active' | 'Used' | 'Revoked';
 
+export type ExamTestType =
+  | 'english_comm'
+  | 'analytical_logic'
+  | 'technical_ops'
+  | 'role_scenario';
+
+export type TestAssignmentStatus = 'Assigned' | 'Passed' | 'Failed';
+
 export interface ExamFormQuestionMap {
   qFullName: string;
   qEmail: string;
@@ -43,6 +51,7 @@ export interface ExamFormQuestionMap {
 export interface ExamFormRecord extends ExamFormQuestionMap {
   id: string;
   googleFormId: string;
+  testType: ExamTestType;
   title: string;
   responderUri: string;
   editUrl: string;
@@ -51,6 +60,7 @@ export interface ExamFormRecord extends ExamFormQuestionMap {
 export interface ExamSubmissionRecord {
   id: string;
   googleFormId: string;
+  testType: ExamTestType;
   responseId: string;
   applicantName: string;
   applicantEmail: string;
@@ -68,6 +78,24 @@ export interface ExamSubmissionRecord {
   summary: string;
   inviteCode: string | null;
   submittedAt: string;
+}
+
+export interface ApplicantTestAssignment {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  applicantEmail: string;
+  testType: ExamTestType;
+  googleFormId: string;
+  formTitle: string;
+  responderUri: string;
+  status: TestAssignmentStatus;
+  submissionId: string | null;
+  duolingoScore: number;
+  aiLikelihoodPct: number;
+  qualityScore: number;
+  assignedAt: string;
+  completedAt: string;
 }
 
 export interface ApplicantInvite {
